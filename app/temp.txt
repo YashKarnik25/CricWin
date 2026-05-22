@@ -1,0 +1,413 @@
+//const Scorecard = () => {
+  //   const [score, setScore] = useState(0);
+  //   const [currentOver, setCurrentOver] = useState(0);
+  //   const [currentBall, setCurrentBall] = useState(0);
+  //   const [battingTeam, setBattingTeam] = useState("Team A");
+  //   const [players, setPlayers] = useState([
+  //     {
+  //       name: "Player A1",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A2",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A3",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A4",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A5",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A6",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A7",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A8",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A9",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A10",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player A11",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B1",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B2",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B3",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B4",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B5",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B6",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B7",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B8",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B9",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B10",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //     {
+  //       name: "Player B11",
+  //       runs: 0,
+  //       balls: 0,
+  //       out: false,
+  //       catches: 0,
+  //       wickets: 0,
+  //       stumpings: 0,
+  //     },
+  //   ]);
+  //   const [currentBatsmen, setCurrentBatsmen] = useState([
+  //     "Player A1",
+  //     "Player A2",
+  //   ]);
+
+  //   const updateScore = (runs) => {
+  //     setScore(score + runs);
+  //     if (currentBall < 5) {
+  //       setCurrentBall(currentBall + 1);
+  //     } else {
+  //       setCurrentBall(0);
+  //       setCurrentOver(currentOver + 1);
+  //     }
+  //     updatePlayerStats(currentBatsmen[0], runs);
+  //   };
+
+  //   const updatePlayerStats = (batsmanName, runs) => {
+  //     setPlayers(
+  //       players.map((player) => {
+  //         if (player.name === batsmanName) {
+  //           return {
+  //             ...player,
+  //             runs: player.runs + runs,
+  //             balls: player.balls + 1,
+  //           };
+  //         }
+  //         return player;
+  //       })
+  //     );
+  //   };
+
+  //   const handleWicket = () => {
+  //     Alert.alert(
+  //       "Wicket!",
+  //       "Select new batsman:",
+  //       players
+  //         .filter(
+  //           (player) => !player.out && !currentBatsmen.includes(player.name)
+  //         )
+  //         .map((player) => ({
+  //           text: player.name,
+  //           onPress: () => {
+  //             setPlayers(
+  //               players.map((p) =>
+  //                 p.name === currentBatsmen[0] ? { ...p, out: true } : p
+  //               )
+  //             );
+  //             setCurrentBatsmen([player.name, currentBatsmen[1]]);
+  //           },
+  //         }))
+  //     );
+  //   };
+
+  //   const updateFieldingStats = (playerName, field, value) => {
+  //     setPlayers(
+  //       players.map((player) => {
+  //         if (player.name === playerName) {
+  //           return { ...player, [field]: player[field] + value };
+  //         }
+  //         return player;
+  //       })
+  //     );
+  //   };
+
+  //   return (
+  //     <View style={scorecardStyle.container}>
+  //       <Text style={scorecardStyle.heading}>Live Score Management</Text>
+  //       <Text style={scorecardStyle.subHeading}>
+  //         Batting Team: {battingTeam}
+  //       </Text>
+  //       <Text style={scorecardStyle.subHeading}>
+  //         Current Score: {score}/{currentOver}.{currentBall}
+  //       </Text>
+  //       <Text style={scorecardStyle.subHeading}>
+  //         Current Batsmen: {currentBatsmen.join(" & ")}
+  //       </Text>
+
+  //       <View style={scorecardStyle.scoreButtons}>
+  //         {[0, 1, 2, 3, 4, 5, 6].map((runs) => (
+  //           <TouchableOpacity
+  //             key={runs}
+  //             style={scorecardStyle.button}
+  //             onPress={() => updateScore(runs)}
+  //           >
+  //             <Text style={scorecardStyle.buttonText}>
+  //               {runs} Run{runs !== 1 ? "s" : ""}
+  //             </Text>
+  //           </TouchableOpacity>
+  //         ))}
+  //         <TouchableOpacity
+  //           style={[scorecardStyle.button, { backgroundColor: "red" }]}
+  //           onPress={handleWicket}
+  //         >
+  //           <Text style={scorecardStyle.buttonText}>Wicket</Text>
+  //         </TouchableOpacity>
+  //       </View>
+
+  //       <Text style={scorecardStyle.heading}>Players</Text>
+  //       <FlatList
+  //         data={players}
+  //         keyExtractor={(item) => item.name}
+  //         renderItem={({ item }) => (
+  //           <View style={scorecardStyle.playerItem}>
+  //             <Text style={scorecardStyle.playerText}>{item.name}</Text>
+  //             <Text style={scorecardStyle.playerText}>Runs: {item.runs}</Text>
+  //             <Text style={scorecardStyle.playerText}>Balls: {item.balls}</Text>
+  //             <Text style={scorecardStyle.playerText}>
+  //               Out: {item.out ? "Yes" : "No"}
+  //             </Text>
+  //             <Text style={scorecardStyle.playerText}>
+  //               Catches: {item.catches}
+  //             </Text>
+  //             <Text style={scorecardStyle.playerText}>
+  //               Wickets: {item.wickets}
+  //             </Text>
+  //             <Text style={scorecardStyle.playerText}>
+  //               Stumpings: {item.stumpings}
+  //             </Text>
+  //           </View>
+  //         )}
+  //       />
+
+  //       <Text style={scorecardStyle.heading}>Fielding Stats</Text>
+  //       <FlatList
+  //         data={players.filter((player) => !player.out)}
+  //         keyExtractor={(item) => item.name}
+  //         renderItem={({ item }) => (
+  //           <View style={scorecardStyle.fieldingButtons}>
+  //             <Text style={scorecardStyle.playerText}>{item.name}</Text>
+  //             <TouchableOpacity
+  //               style={scorecardStyle.fieldingButton}
+  //               onPress={() => updateFieldingStats(item.name, "catches", 1)}
+  //             >
+  //               <Text style={scorecardStyle.buttonText}>Catch</Text>
+  //             </TouchableOpacity>
+  //             <TouchableOpacity
+  //               style={scorecardStyle.fieldingButton}
+  //               onPress={() => updateFieldingStats(item.name, "wickets", 1)}
+  //             >
+  //               <Text style={scorecardStyle.buttonText}>Wicket</Text>
+  //             </TouchableOpacity>
+  //             <TouchableOpacity
+  //               style={scorecardStyle.fieldingButton}
+  //               onPress={() => updateFieldingStats(item.name, "stumpings", 1)}
+  //             >
+  //               <Text style={scorecardStyle.buttonText}>Stumping</Text>
+  //             </TouchableOpacity>
+  //           </View>
+  //         )}
+  //       />
+  //     </View>
+  //   );
+  // };
+
+  // const scorecardStyle = StyleSheet.create({
+  //   container: {
+  //     flex: 1,
+  //     padding: 20,
+  //     backgroundColor: "#f5f5f5",
+  //   },
+  //   heading: {
+  //     fontSize: 24,
+  //     fontWeight: "bold",
+  //     marginBottom: 10,
+  //   },
+  //   subHeading: {
+  //     fontSize: 18,
+  //     marginBottom: 10,
+  //   },
+  //   scoreButtons: {
+  //     flexDirection: "row",
+  //     flexWrap: "wrap",
+  //     justifyContent: "space-around",
+  //     marginBottom: 20,
+  //   },
+  //   button: {
+  //     backgroundColor: "#007bff",
+  //     padding: 10,
+  //     margin: 5,
+  //     borderRadius: 5,
+  //   },
+  //   buttonText: {
+  //     color: "#fff",
+  //     fontSize: 16,
+  //   },
+  //   playerItem: {
+  //     backgroundColor: "#fff",
+  //     padding: 10,
+  //     marginVertical: 5,
+  //     borderRadius: 5,
+  //     borderColor: "#ddd",
+  //     borderWidth: 1,
+  //   },
+  //   playerText: {
+  //     fontSize: 16,
+  //   },
+  //   fieldingButtons: {
+  //     flexDirection: "row",
+  //     alignItems: "center",
+  //     marginBottom: 10,
+  //   },
+  //   fieldingButton: {
+  //     backgroundColor: "#28a745",
+  //     padding: 10,
+  //     margin: 5,
+  //     borderRadius: 5,
+  //   },
+  // });
