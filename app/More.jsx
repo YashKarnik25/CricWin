@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,6 @@ import {
   BackHandler,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-
 import {
   ref,
   push,
@@ -25,8 +24,16 @@ import {
 import { database } from "./firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
+import { useNavigation } from "expo-router/react-navigation";
+import { Picker } from "@react-native-picker/picker";
+import { UserContext } from "./_layout";
 
 const menuItems = [
+  {
+    id: "0",
+    title: "Login / Account",
+    description: "Sign in or manage your account",
+  },
   { id: "1", title: "Team Register", description: "Register a new team" },
   { id: "2", title: "About Us", description: "Learn more about us..." },
   {
@@ -160,6 +167,22 @@ const TeamRegistrationForm = ({
 
 const MoreScreen = () => {
   const [selectedScreen, setSelectedScreen] = useState("menu");
+  const navigation = useNavigation();
+  const { emailGlobal, setEmailGlobal } = useContext(UserContext);
+
+  // Authentication States
+  const [authView, setAuthView] = useState("login");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [signupForm, setSignupForm] = useState({
+    firstname: "",
+    lastname: "",
+    email: "",
+    contact: "",
+    role: "player",
+    password: "",
+    confirmPassword: "",
+  });
 
   const handlePress = (item) => {
     setSelectedScreen(item.title);
@@ -178,7 +201,7 @@ const MoreScreen = () => {
 
       const backHandler = BackHandler.addEventListener(
         "hardwareBackPress",
-        backAction
+        backAction,
       );
 
       return () => backHandler.remove();
@@ -238,35 +261,6 @@ const MoreScreen = () => {
     }
   };
 
-  const getSortedSponsors = () => {
-    if (!sponsors.length) return [];
-
-    switch (sortBy) {
-      case "latest":
-        return [...sponsors].sort((a, b) => b.timestamp - a.timestamp);
-      case "oldest":
-        return [...sponsors].sort((a, b) => a.timestamp - b.timestamp);
-      case "highPrice":
-        return [...sponsors].sort((a, b) => b.amount - a.amount);
-      case "lowPrice":
-        return [...sponsors].sort((a, b) => a.amount - b.amount);
-      case "longDuration":
-        return [...sponsors].sort((a, b) => {
-          const durationA = durationMapping[a.duration] || 0;
-          const durationB = durationMapping[b.duration] || 0;
-          return durationB - durationA;
-        });
-      case "shortDuration":
-        return [...sponsors].sort((a, b) => {
-          const durationA = durationMapping[a.duration] || 0;
-          const durationB = durationMapping[b.duration] || 0;
-          return durationA - durationB;
-        });
-      default:
-        return sponsors;
-    }
-  };
-
   const toggleSponsorList = () => {
     if (!showSponsorList) {
       fetchSponsors();
@@ -313,7 +307,7 @@ const MoreScreen = () => {
             `*Mode:* ${mode}\n` +
             `*Duration:* ${duration}\n` +
             `*Amount:* ₹${amount}\n\n` +
-            `Hello, I would like to sponsor CrickWin as a digital sponsor. Please find my details above. I will be sending my advertisement content shortly.`
+            `Hello, I would like to sponsor CrickWin as a digital sponsor. Please find my details above. I will be sending my advertisement content shortly.`,
         );
 
         let url = `whatsapp://send?phone=${phoneNumber}&text=${message}`;
@@ -322,7 +316,7 @@ const MoreScreen = () => {
             if (!supported) {
               Alert.alert(
                 "WhatsApp not installed",
-                "Please install WhatsApp to use this feature"
+                "Please install WhatsApp to use this feature",
               );
             } else {
               return Linking.openURL(url);
@@ -332,7 +326,7 @@ const MoreScreen = () => {
       } else {
         Alert.alert(
           "Form Submitted",
-          `Name: ${name}\nEmail: ${email}\nMode: ${mode}\nDuration: ${duration}\nAmount: ₹${amount}`
+          `Name: ${name}\nEmail: ${email}\nMode: ${mode}\nDuration: ${duration}\nAmount: ₹${amount}`,
         );
       }
     } catch (e) {
@@ -356,15 +350,9 @@ const MoreScreen = () => {
 
   const [teamName, setTeamName] = useState("");
   const [players, setPlayers] = useState(
-    Array(11).fill({ name: "", email: "" })
+    Array(11).fill({ name: "", email: "" }),
   );
   const [contact, setContact] = useState("");
-
-  const handlePlayerChange = (text, index, field) => {
-    const newPlayers = [...players];
-    newPlayers[index] = { ...newPlayers[index], [field]: text };
-    setPlayers(newPlayers);
-  };
 
   const handleSubmitTeam = () => {
     if (
@@ -391,22 +379,21 @@ const MoreScreen = () => {
 
     const teamRef = ref(database, "teams/");
     const emailRef = ref(database, `user/`);
-    const tournamentRef = ref(database, `tournament/`);
 
     async function getPlayerByEmail(emails) {
       try {
         const emailChecks = emails.map((email) =>
-          query(emailRef, orderByChild("email"), equalTo(email))
+          query(emailRef, orderByChild("email"), equalTo(email)),
         );
 
         const emailChecks2 = query(
           teamRef,
           orderByChild("email"),
-          equalTo(email)
+          equalTo(email),
         );
 
         const results = await Promise.all(
-          emailChecks.map((emailQuery) => get(emailQuery))
+          emailChecks.map((emailQuery) => get(emailQuery)),
         );
 
         const results2 = await get(emailChecks2);
@@ -423,7 +410,7 @@ const MoreScreen = () => {
             .then(() => {
               Alert.alert(
                 "Success",
-                "Team registration submitted successfully!"
+                "Team registration submitted successfully!",
               );
             })
             .catch((error) => {
@@ -432,11 +419,11 @@ const MoreScreen = () => {
             });
         } else {
           const missingEmails = emails.filter(
-            (email, index) => !results[index].exists()
+            (email, index) => !results[index].exists(),
           );
           Alert.alert(
             "Alert",
-            "Following Emails do not exist:" + `\n${missingEmails.toString()}`
+            "Following Emails do not exist:" + `\n${missingEmails.toString()}`,
           );
         }
       } catch (error) {
@@ -445,6 +432,97 @@ const MoreScreen = () => {
     }
 
     getPlayerByEmail(players.map((player) => player.email));
+  };
+
+  const handleLoginSubmit = async () => {
+    if (!loginEmail.trim() || !loginPassword.trim()) {
+      Alert.alert("Error", "Please enter both email and password.");
+      return;
+    }
+    if (loginEmail === "admin@gmail.com" && loginPassword === "123") {
+      navigation.navigate("AdminLayout", { screen: "Dashboard" });
+      return;
+    }
+    try {
+      const userRef = ref(database, "user");
+      const fetchUserQuery = query(
+        userRef,
+        orderByChild("email"),
+        equalTo(loginEmail),
+      );
+      const snapshot = await get(fetchUserQuery);
+
+      if (snapshot.exists()) {
+        const userData = Object.values(snapshot.val())[0];
+        if (userData.password === loginPassword) {
+          setEmailGlobal(loginEmail);
+          Alert.alert("Success", "Logged in successfully!");
+          setSelectedScreen("menu");
+        } else {
+          Alert.alert("Error", "Invalid password.");
+        }
+      } else {
+        Alert.alert("Error", "User not found.");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      Alert.alert("Error", "An error occurred during login. Please try again.");
+    }
+  };
+
+  const handleSignupSubmit = () => {
+    const {
+      firstname,
+      lastname,
+      email,
+      contact,
+      role,
+      password,
+      confirmPassword,
+    } = signupForm;
+
+    if (
+      !firstname.trim() ||
+      !lastname.trim() ||
+      !email.trim() ||
+      !contact.trim() ||
+      !password.trim() ||
+      !confirmPassword.trim()
+    ) {
+      Alert.alert("Error", "Please fill in all fields.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      Alert.alert("Error", "Passwords do not match.");
+      return;
+    }
+
+    const newUser = { firstname, lastname, email, contact, role, password };
+    const userRef = ref(database, "user");
+
+    push(userRef, newUser)
+      .then(() => {
+        Alert.alert("Success", "Account created successfully!");
+        const statRef = ref(database, "playerStats");
+        const InitialStatObj = {
+          matches: 0,
+          batting: { runs: 0, balls: 0, average: 1, strikeRate: 1 },
+          bowling: { balls: 0, runs: 0, wickets: 0 },
+        };
+        InitialStatObj.email = signupForm.email;
+        const playerRef = ref(
+          database,
+          `playerStats/${signupForm.firstname + " " + signupForm.lastname}`,
+        );
+        set(playerRef, InitialStatObj);
+
+        setAuthView("login");
+      })
+      .catch((error) => {
+        console.error("Error adding User: ", error);
+        Alert.alert("Error", "Failed to add User");
+      });
   };
 
   return (
@@ -472,7 +550,192 @@ const MoreScreen = () => {
         </ScrollView>
       ) : (
         <View style={styles.contactContainer}>
-          <ScrollView style={styles.scrollContainer}>
+          <ScrollView
+            style={styles.scrollContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* LOGIN / ACCOUNT SECTION */}
+            {selectedScreen === "Login / Account" && (
+              <View style={loginStyle.container}>
+                <Text
+                  style={[styles.contactHeader, styles.headerSpacing]}
+                ></Text>
+                {emailGlobal ? (
+                  <View
+                    style={{
+                      width: "100%",
+                      alignItems: "center",
+                      marginTop: 20,
+                    }}
+                  >
+                    <Ionicons
+                      name="person-circle-outline"
+                      size={120}
+                      color="#4CAF50"
+                    />
+                    <Text style={loginStyle.title}>My Account</Text>
+                    <Text style={loginStyle.subtitle}>{emailGlobal}</Text>
+                    <TouchableOpacity
+                      style={[
+                        loginStyle.button,
+                        { backgroundColor: "#f44336", marginTop: 30 },
+                      ]}
+                      onPress={() => {
+                        setEmailGlobal("");
+                        Alert.alert("Success", "Logged out successfully");
+                        setSelectedScreen("menu");
+                      }}
+                    >
+                      <Text style={loginStyle.buttonText}>Logout</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : authView === "login" ? (
+                  <View style={{ width: "100%", alignItems: "center" }}>
+                    <Text style={loginStyle.title}>Welcome Back</Text>
+                    <Text style={loginStyle.subtitle}>
+                      Log in to your account
+                    </Text>
+
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Email"
+                      placeholderTextColor="#aaa"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={loginEmail}
+                      onChangeText={setLoginEmail}
+                    />
+
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Password"
+                      placeholderTextColor="#aaa"
+                      secureTextEntry
+                      value={loginPassword}
+                      onChangeText={setLoginPassword}
+                    />
+
+                    <TouchableOpacity
+                      style={loginStyle.button}
+                      onPress={handleLoginSubmit}
+                    >
+                      <Text style={loginStyle.buttonText}>Login</Text>
+                    </TouchableOpacity>
+
+                    <Text style={loginStyle.footerText}>
+                      Don't have an account?{" "}
+                      <Text
+                        style={loginStyle.linkText}
+                        onPress={() => setAuthView("signup")}
+                      >
+                        Sign up here
+                      </Text>
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ width: "100%", alignItems: "center" }}>
+                    <Text style={loginStyle.title}>Create Account</Text>
+                    <Text style={loginStyle.subtitle}>
+                      Sign up to get started
+                    </Text>
+
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="First Name"
+                      placeholderTextColor="#aaa"
+                      value={signupForm.firstname}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, firstname: v })
+                      }
+                    />
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Last Name"
+                      placeholderTextColor="#aaa"
+                      value={signupForm.lastname}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, lastname: v })
+                      }
+                    />
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Email"
+                      placeholderTextColor="#aaa"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={signupForm.email}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, email: v })
+                      }
+                    />
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Contact"
+                      placeholderTextColor="#aaa"
+                      keyboardType="phone-pad"
+                      value={signupForm.contact}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, contact: v })
+                      }
+                    />
+
+                    <View style={loginStyle.dropdownContainer}>
+                      <Picker
+                        selectedValue={signupForm.role}
+                        style={loginStyle.dropdown}
+                        onValueChange={(v) =>
+                          setSignupForm({ ...signupForm, role: v })
+                        }
+                      >
+                        <Picker.Item label="Choose Role" value=" " />
+                        <Picker.Item label="Player" value="player" />
+                        <Picker.Item label="Manager" value="owner" />
+                        <Picker.Item label="Other" value="other" />
+                      </Picker>
+                    </View>
+
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Password"
+                      placeholderTextColor="#aaa"
+                      secureTextEntry
+                      value={signupForm.password}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, password: v })
+                      }
+                    />
+                    <TextInput
+                      style={loginStyle.input}
+                      placeholder="Confirm Password"
+                      placeholderTextColor="#aaa"
+                      secureTextEntry
+                      value={signupForm.confirmPassword}
+                      onChangeText={(v) =>
+                        setSignupForm({ ...signupForm, confirmPassword: v })
+                      }
+                    />
+
+                    <TouchableOpacity
+                      style={loginStyle.button}
+                      onPress={handleSignupSubmit}
+                    >
+                      <Text style={loginStyle.buttonText}>Sign Up</Text>
+                    </TouchableOpacity>
+
+                    <Text style={loginStyle.footerText}>
+                      Already have an account?{" "}
+                      <Text
+                        style={loginStyle.linkText}
+                        onPress={() => setAuthView("login")}
+                      >
+                        Log in here
+                      </Text>
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
             {selectedScreen === "About Us" && (
               <View style={styles.aboutContainer}>
                 <LinearGradient
@@ -825,7 +1088,7 @@ const MoreScreen = () => {
                 </Text>
                 <Text style={styles.contactSubHeader}>Sponsorship</Text>
 
-                <ScrollView contentContainerStyle={styles.containerSp}>
+                <View style={styles.containerSp}>
                   <TextInput
                     style={styles.input}
                     placeholder="Name"
@@ -901,7 +1164,7 @@ const MoreScreen = () => {
                       chat.
                     </Text>
                   </View>
-                </ScrollView>
+                </View>
               </>
             )}
 
@@ -978,16 +1241,16 @@ const MoreScreen = () => {
                           .then((supported) => {
                             if (supported) {
                               return Linking.openURL(
-                                "fb://profile/Yash Karnik"
+                                "fb://profile/Yash Karnik",
                               );
                             } else {
                               return Linking.openURL(
-                                "https://www.facebook.com/Yash Karnik"
+                                "https://www.facebook.com/Yash Karnik",
                               );
                             }
                           })
                           .catch((err) =>
-                            console.error("Error opening Facebook:", err)
+                            console.error("Error opening Facebook:", err),
                           );
                       }}
                     >
@@ -1002,21 +1265,21 @@ const MoreScreen = () => {
                       style={[styles.socialButton, styles.socialTwitter]}
                       onPress={() => {
                         Linking.canOpenURL(
-                          "twitter://user?screen_name=crickwin"
+                          "twitter://user?screen_name=crickwin",
                         )
                           .then((supported) => {
                             if (supported) {
                               return Linking.openURL(
-                                "twitter://user?screen_name=YASHKARNIK25"
+                                "twitter://user?screen_name=YASHKARNIK25",
                               );
                             } else {
                               return Linking.openURL(
-                                "https://twitter.com/YASHKARNIK25"
+                                "https://twitter.com/YASHKARNIK25",
                               );
                             }
                           })
                           .catch((err) =>
-                            console.error("Error opening Twitter:", err)
+                            console.error("Error opening Twitter:", err),
                           );
                       }}
                     >
@@ -1030,16 +1293,16 @@ const MoreScreen = () => {
                           .then((supported) => {
                             if (supported) {
                               return Linking.openURL(
-                                "instagram://user?username=hardik_29_._"
+                                "instagram://user?username=hardik_29_._",
                               );
                             } else {
                               return Linking.openURL(
-                                "https://www.instagram.com/hardik_29_._"
+                                "https://www.instagram.com/hardik_29_._",
                               );
                             }
                           })
                           .catch((err) =>
-                            console.error("Error opening Instagram:", err)
+                            console.error("Error opening Instagram:", err),
                           );
                       }}
                     >
@@ -1059,6 +1322,77 @@ const MoreScreen = () => {
     </View>
   );
 };
+
+const loginStyle = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: "center",
+    paddingHorizontal: 20,
+    marginTop: 10,
+    paddingBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: 10,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 30,
+  },
+  input: {
+    width: "100%",
+    height: 50,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    backgroundColor: "#fff",
+    marginBottom: 15,
+    fontSize: 16,
+    color: "#333",
+  },
+  dropdownContainer: {
+    width: "100%",
+    height: 50,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    marginBottom: 15,
+    justifyContent: "center",
+  },
+  dropdown: {
+    width: "100%",
+    height: "100%",
+    paddingHorizontal: 15,
+    color: "#333",
+  },
+  button: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "#4CAF50",
+    borderRadius: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  buttonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+  footerText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  linkText: {
+    color: "#4CAF50",
+    fontWeight: "bold",
+  },
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -1296,24 +1630,6 @@ const styles = StyleSheet.create({
     borderLeftColor: "#4299e1",
     paddingLeft: 10,
   },
-  input: {
-    backgroundColor: "#ffffff",
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    fontSize: 16,
-    color: "#2d3748",
-    borderWidth: 1.5,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
   playerContainer: {
     backgroundColor: "#f8fafc",
     borderRadius: 12,
@@ -1422,32 +1738,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 40,
     marginVertical: 5,
   },
-  termsFooter: {
-    backgroundColor: "#e8eaf6",
-    padding: 20,
-    borderRadius: 10,
-    margin: 15,
-    alignItems: "center",
-  },
-  termsFooterText: {
-    fontSize: 14,
-    color: "#5c6bc0",
-    textAlign: "center",
-    marginBottom: 15,
-    fontWeight: "500",
-  },
-  termsAcceptButton: {
-    backgroundColor: "#3d5afe",
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-    elevation: 3,
-  },
-  termsAcceptButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
   headerSpacing: {
     marginTop: 20,
   },
@@ -1537,30 +1827,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 15,
   },
-  aboutFooter: {
-    backgroundColor: "#e0f2f1",
-    padding: 20,
-    borderRadius: 10,
-    margin: 15,
-    alignItems: "center",
-  },
-  aboutVersionText: {
-    fontSize: 14,
-    color: "#00695c",
-    marginBottom: 15,
-  },
-  aboutLearnMoreButton: {
-    backgroundColor: "#009688",
-    paddingVertical: 10,
-    paddingHorizontal: 25,
-    borderRadius: 20,
-    elevation: 2,
-  },
-  aboutLearnMoreText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
   contactUsContainer: {
     flex: 1,
     backgroundColor: "#f9fbe7",
@@ -1647,57 +1913,6 @@ const styles = StyleSheet.create({
   },
   socialInstagram: {
     backgroundColor: "#C13584",
-  },
-  addressContainer: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  addressText: {
-    fontSize: 16,
-    color: "#424242",
-    lineHeight: 24,
-  },
-  addressMap: {
-    width: "100%",
-    height: 150,
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
-    marginTop: 15,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
-    borderStyle: "dashed",
-  },
-  mapPlaceholder: {
-    color: "#757575",
-    marginTop: 5,
-  },
-  contactFooter: {
-    backgroundColor: "#e8f5e9",
-    padding: 20,
-    borderRadius: 10,
-    margin: 15,
-    alignItems: "center",
-  },
-  contactFooterText: {
-    fontSize: 16,
-    color: "#2e7d32",
-    textAlign: "center",
-    marginBottom: 15,
-    fontWeight: "500",
-  },
-  contactActionButton: {
-    backgroundColor: "#43a047",
-    paddingVertical: 12,
-    paddingHorizontal: 30,
-    borderRadius: 25,
-    elevation: 3,
-  },
-  contactActionButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "bold",
   },
 });
 

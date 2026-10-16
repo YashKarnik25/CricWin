@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { ref, push, set } from "firebase/database";
 import { database } from "./firebase"; // Adjust the path if needed
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation } from "expo-router/react-navigation";
 
 export default function Sponsor() {
   const [name, setName] = useState("");

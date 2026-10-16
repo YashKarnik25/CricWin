@@ -10,7 +10,7 @@ import {
   StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation } from "expo-router/react-navigation";
 import { database } from "./firebase";
 import {
   ref,
@@ -25,9 +25,10 @@ import {
 
 const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
-const AnimatedButton = ({ children, onPress, style, ...props }) => {
+const AnimatedButton = ({ children, onPress, style, disabled, ...props }) => {
   const scaleValue = useRef(new Animated.Value(1)).current;
   const handlePressIn = () => {
+    if (disabled) return;
     Animated.timing(scaleValue, {
       toValue: 0.95,
       duration: 100,
@@ -35,6 +36,7 @@ const AnimatedButton = ({ children, onPress, style, ...props }) => {
     }).start();
   };
   const handlePressOut = () => {
+    if (disabled) return;
     Animated.timing(scaleValue, {
       toValue: 1,
       duration: 100,
@@ -43,11 +45,14 @@ const AnimatedButton = ({ children, onPress, style, ...props }) => {
   };
   return (
     <AnimatedTouchable
-      onPress={onPress}
+      onPress={disabled ? null : onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
-      activeOpacity={0.8}
-      style={[style, { transform: [{ scale: scaleValue }] }]}
+      activeOpacity={disabled ? 1 : 0.8}
+      style={[
+        style,
+        { transform: [{ scale: scaleValue }], opacity: disabled ? 0.6 : 1 },
+      ]}
       {...props}
     >
       {children}
@@ -69,6 +74,45 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
   const [dismissedBatsmenSecond, setDismissedBatsmenSecond] = useState([]);
 
   const [isInningSwitched, setIsInningSwitched] = useState(false);
+  const [totalRuns, setTotalRuns] = useState(0);
+  const [wickets, setWickets] = useState(0);
+  const [ballsInOver, setBallsInOver] = useState(0);
+  const [completedOvers, setCompletedOvers] = useState(0);
+  const [currentBatsmen, setCurrentBatsmen] = useState({
+    striker: { name: "", runs: 0, balls: 0 },
+    nonStriker: { name: "", runs: 0, balls: 0 },
+  });
+  const [battingTeamBench, setBattingTeamBench] = useState([]);
+  const [bowlingTeam, setBowlingTeam] = useState([]);
+  const [allBowlersStats, setAllBowlersStats] = useState({});
+  const [currentBowler, setCurrentBowler] = useState({
+    name: "",
+    runsGiven: 0,
+    wickets: 0,
+    balls: 0,
+  });
+
+  // History tracking for Snapshot Undo/Redo
+  const [history, setHistory] = useState([]);
+  const [redoHistory, setRedoHistory] = useState([]);
+
+  const [showBatsmanModal, setShowBatsmanModal] = useState(false);
+  const [showBowlerModal, setShowBowlerModal] = useState(false);
+
+  const [innings, setInnings] = useState(1);
+  const [targetRuns, setTargetRuns] = useState(null);
+  const [switchMessage, setSwitchMessage] = useState("");
+  const [isAfterNoBall, setIsAfterNoBall] = useState(false);
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
 
   useEffect(() => {
     const fetchTeams = async () => {
@@ -77,12 +121,12 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
         const teamQuery1 = query(
           teamsRef,
           orderByChild("teamName"),
-          equalTo(battingTeam1)
+          equalTo(battingTeam1),
         );
         const teamQuery2 = query(
           teamsRef,
           orderByChild("teamName"),
-          equalTo(bowlingTeam1)
+          equalTo(bowlingTeam1),
         );
         const team1Snapshot = await get(teamQuery1);
         const team2Snapshot = await get(teamQuery2);
@@ -102,41 +146,6 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     };
     fetchTeams();
   }, [match]);
-
-  const [totalRuns, setTotalRuns] = useState(0);
-  const [wickets, setWickets] = useState(0);
-  const [ballsInOver, setBallsInOver] = useState(0);
-  const [completedOvers, setCompletedOvers] = useState(0);
-  const [currentBatsmen, setCurrentBatsmen] = useState({
-    striker: { name: "", runs: 0, balls: 0 },
-    nonStriker: { name: "", runs: 0, balls: 0 },
-  });
-  const [battingTeamBench, setBattingTeamBench] = useState([]);
-  const [bowlingTeam, setBowlingTeam] = useState([]);
-  const [allBowlersStats, setAllBowlersStats] = useState({});
-  const [currentBowler, setCurrentBowler] = useState({
-    name: "",
-    runsGiven: 0,
-    wickets: 0,
-    balls: 0,
-  });
-  const [history, setHistory] = useState([]);
-  const [showBatsmanModal, setShowBatsmanModal] = useState(false);
-  const [showBowlerModal, setShowBowlerModal] = useState(false);
-
-  const [innings, setInnings] = useState(1);
-  const [targetRuns, setTargetRuns] = useState(null);
-  const [switchMessage, setSwitchMessage] = useState("");
-  const [isAfterNoBall, setIsAfterNoBall] = useState(false);
-
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
-  }, []);
 
   useEffect(() => {
     if (team1Players.length > 1 && team2Players.length > 0) {
@@ -384,10 +393,6 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
             email: currentData.email,
           };
           return set(playerRef, updatedRecord);
-        } else {
-          console.log(
-            `Record for player ${playerName} does not exist. Skipping update.`
-          );
         }
       });
       promises.push(p);
@@ -402,6 +407,7 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setBallsInOver(0);
     setCompletedOvers(0);
     setHistory([]);
+    setRedoHistory([]);
     setAllBowlersStats({});
     setShowBatsmanModal(false);
     setShowBowlerModal(false);
@@ -425,9 +431,65 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     });
   };
 
-  const handleLegalBall = (runValue) => {
+  // -----------------------------------------------------
+  // UNDO / REDO SNAPSHOT ARCHITECTURE
+  // -----------------------------------------------------
+  const saveStateToHistory = (actionDetails) => {
+    const snapshot = {
+      totalRuns,
+      wickets,
+      ballsInOver,
+      completedOvers,
+      currentBatsmen: JSON.parse(JSON.stringify(currentBatsmen)),
+      currentBowler: JSON.parse(JSON.stringify(currentBowler)),
+      allBowlersStats: JSON.parse(JSON.stringify(allBowlersStats)),
+      isAfterNoBall,
+      battingTeamBench: [...battingTeamBench],
+      dismissedBatsmenFirst: [...dismissedBatsmenFirst],
+      dismissedBatsmenSecond: [...dismissedBatsmenSecond],
+    };
+    setHistory((prev) => [...prev, { ...actionDetails, snapshot }]);
+  };
+
+  const handleUndo = () => {
+    if (history.length === 0) return;
+    const lastEvent = history[history.length - 1];
+
+    setRedoHistory((prev) => [...prev, lastEvent]);
+    setHistory((prev) => prev.slice(0, -1));
+
+    // Restore Exact Snapshot
+    const s = lastEvent.snapshot;
+    setTotalRuns(s.totalRuns);
+    setWickets(s.wickets);
+    setBallsInOver(s.ballsInOver);
+    setCompletedOvers(s.completedOvers);
+    setCurrentBatsmen(s.currentBatsmen);
+    setCurrentBowler(s.currentBowler);
+    setAllBowlersStats(s.allBowlersStats);
+    setIsAfterNoBall(s.isAfterNoBall);
+    setBattingTeamBench(s.battingTeamBench);
+    setDismissedBatsmenFirst(s.dismissedBatsmenFirst);
+    setDismissedBatsmenSecond(s.dismissedBatsmenSecond);
+  };
+
+  const handleRedo = () => {
+    if (redoHistory.length === 0) return;
+    const redoEvent = redoHistory[redoHistory.length - 1];
+    setRedoHistory((prev) => prev.slice(0, -1));
+
+    // Re-execute Action
+    if (redoEvent.type === "run") handleLegalBall(redoEvent.value, true);
+    else if (redoEvent.type === "wicket") handleWicket(true);
+    else if (redoEvent.type === "wide") handleWide(true);
+    else if (redoEvent.type === "noBall") handleNoBall(true);
+  };
+
+  const handleLegalBall = (runValue, isRedo = false) => {
+    if (!isRedo) setRedoHistory([]);
+    saveStateToHistory({ type: "run", value: runValue });
+
     setTotalRuns((prev) => prev + runValue);
-    setHistory((prev) => [...prev, { type: "run", value: runValue }]);
     setCurrentBatsmen((prev) => ({
       ...prev,
       striker: {
@@ -441,6 +503,7 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
       runsGiven: prev.runsGiven + runValue,
       balls: prev.balls + 1,
     }));
+
     if (runValue % 2 !== 0) {
       setCurrentBatsmen((prev) => ({
         striker: prev.nonStriker,
@@ -455,9 +518,11 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     }
   };
 
-  const handleWicket = () => {
+  const handleWicket = (isRedo = false) => {
+    if (!isRedo) setRedoHistory([]);
+    saveStateToHistory({ type: "wicket" });
+
     setWickets((prev) => prev + 1);
-    setHistory((prev) => [...prev, { type: "wicket" }]);
     if (innings === 1) {
       setDismissedBatsmenFirst((prev) => [...prev, currentBatsmen.striker]);
     } else if (innings === 2) {
@@ -482,83 +547,27 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setShowBatsmanModal(true);
   };
 
-  const handleWide = () => {
+  const handleWide = (isRedo = false) => {
+    if (!isRedo) setRedoHistory([]);
+    saveStateToHistory({ type: "wide" });
+
     setTotalRuns((prev) => prev + 1);
-    setHistory((prev) => [...prev, { type: "wide" }]);
     setCurrentBowler((prev) => ({
       ...prev,
       runsGiven: prev.runsGiven + 1,
     }));
   };
 
-  const handleNoBall = () => {
+  const handleNoBall = (isRedo = false) => {
+    if (!isRedo) setRedoHistory([]);
+    saveStateToHistory({ type: "noBall" });
+
     setTotalRuns((prev) => prev + 1);
-    setHistory((prev) => [...prev, { type: "noBall" }]);
     setCurrentBowler((prev) => ({
       ...prev,
       runsGiven: prev.runsGiven + 1,
     }));
     setIsAfterNoBall(true);
-  };
-
-  const handleUndo = () => {
-    setHistory((prevHistory) => {
-      if (prevHistory.length === 0) return prevHistory;
-      const newHistory = [...prevHistory];
-      const lastEvent = newHistory.pop();
-      if (lastEvent.type === "run") {
-        setTotalRuns((prev) => prev - lastEvent.value);
-        setCurrentBatsmen((prev) => ({
-          ...prev,
-          striker: {
-            ...prev.striker,
-            runs: prev.striker.runs - lastEvent.value,
-            balls: prev.striker.balls - 1,
-          },
-        }));
-        setCurrentBowler((prev) => ({
-          ...prev,
-          runsGiven: prev.runsGiven - lastEvent.value,
-        }));
-        setBallsInOver((prev) => {
-          if (prev === 0 && completedOvers > 0) {
-            setCompletedOvers((prevOvers) => prevOvers - 1);
-            return 5;
-          }
-          return prev > 0 ? prev - 1 : 0;
-        });
-      } else if (lastEvent.type === "wicket") {
-        setWickets((prev) => prev - 1);
-        setCurrentBatsmen((prev) => ({
-          ...prev,
-          striker: { ...prev.striker, balls: prev.striker.balls - 1 },
-        }));
-        setCurrentBowler((prev) => ({
-          ...prev,
-          wickets: prev.wickets - 1,
-        }));
-        setBallsInOver((prev) => {
-          if (prev === 0 && completedOvers > 0) {
-            setCompletedOvers((prevOvers) => prevOvers - 1);
-            return 5;
-          }
-          return prev > 0 ? prev - 1 : 0;
-        });
-      } else if (lastEvent.type === "wide") {
-        setTotalRuns((prev) => prev - 1);
-        setCurrentBowler((prev) => ({
-          ...prev,
-          runsGiven: prev.runsGiven - 1,
-        }));
-      } else if (lastEvent.type === "noBall") {
-        setTotalRuns((prev) => prev - 1);
-        setCurrentBowler((prev) => ({
-          ...prev,
-          runsGiven: prev.runsGiven - 1,
-        }));
-      }
-      return newHistory;
-    });
   };
 
   const handleSelectBatsman = (player) => {
@@ -630,16 +639,13 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setSwitchMessage(
       `${isInningSwitched ? bowlingTeam1 : battingTeam1} need ${
         totalRuns + 1
-      } runs to win from 18 balls.`
+      } runs to win.`,
     );
-
     setIsInningSwitched(true);
   };
 
   const displayOvers = `${completedOvers}.${ballsInOver}`;
-  const bowlerOvers = `${Math.floor(currentBowler.balls / 6)}.${
-    currentBowler.balls % 6
-  }`;
+  const bowlerOvers = `${Math.floor(currentBowler.balls / 6)}.${currentBowler.balls % 6}`;
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -661,13 +667,13 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
               <Text style={styles.scoreDetails}>
                 CRR:{" "}
                 {(totalRuns / (completedOvers + ballsInOver / 6) || 0).toFixed(
-                  2
+                  2,
                 )}
               </Text>
               <Text style={styles.scoreDetails}>
                 RRR:{" "}
                 {(totalRuns / (completedOvers + ballsInOver / 6) || 0).toFixed(
-                  2
+                  2,
                 )}
               </Text>
             </View>
@@ -713,17 +719,45 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
         </View>
 
         <View style={styles.actionButtonsContainer}>
-          <AnimatedButton style={styles.actionButton} onPress={handleWicket}>
+          <AnimatedButton
+            style={styles.actionButton}
+            onPress={() => handleWicket(false)}
+          >
             <Text style={styles.actionButtonText}>WICKET</Text>
           </AnimatedButton>
-          <AnimatedButton style={styles.actionButton} onPress={handleWide}>
+          <AnimatedButton
+            style={styles.actionButton}
+            onPress={() => handleWide(false)}
+          >
             <Text style={styles.actionButtonText}>WD</Text>
           </AnimatedButton>
-          <AnimatedButton style={styles.actionButton} onPress={handleNoBall}>
+          <AnimatedButton
+            style={styles.actionButton}
+            onPress={() => handleNoBall(false)}
+          >
             <Text style={styles.actionButtonText}>NB</Text>
           </AnimatedButton>
-          <AnimatedButton style={styles.actionButton} onPress={handleUndo}>
+          <AnimatedButton
+            style={[
+              styles.actionButton,
+              { backgroundColor: history.length > 0 ? "#3498db" : "#95a5a6" },
+            ]}
+            onPress={handleUndo}
+            disabled={history.length === 0}
+          >
             <Text style={styles.actionButtonText}>UNDO</Text>
+          </AnimatedButton>
+          <AnimatedButton
+            style={[
+              styles.actionButton,
+              {
+                backgroundColor: redoHistory.length > 0 ? "#f39c12" : "#95a5a6",
+              },
+            ]}
+            onPress={handleRedo}
+            disabled={redoHistory.length === 0}
+          >
+            <Text style={styles.actionButtonText}>REDO</Text>
           </AnimatedButton>
         </View>
 
@@ -923,7 +957,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     backgroundColor: "#3498db",
-    width: 100,
+    width: 90,
     height: 40,
     borderRadius: 8,
     alignItems: "center",

@@ -14,7 +14,7 @@ import {
 import { ref, query, orderByChild, equalTo, get } from "firebase/database";
 import { database } from "./firebase";
 import { UserContext } from "./_layout";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 

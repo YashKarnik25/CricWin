@@ -20,7 +20,7 @@ import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { ref, onValue } from "firebase/database";
 import { database } from "./firebase";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation } from "expo-router/react-navigation";
 import { UserContext } from "./_layout";
 
 const { width, height } = Dimensions.get("window");
@@ -82,7 +82,7 @@ const ImageSlider = ({ images, interval = 3000 }) => {
         ref={scrollViewRef}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-          { useNativeDriver: false }
+          { useNativeDriver: false },
         )}
         scrollEventThrottle={16}
       >
@@ -212,7 +212,7 @@ const TournamentCard = ({ item }) => {
             text: "Login",
             onPress: () => navigation.navigate("Tournaments"),
           },
-        ]
+        ],
       );
     } else {
       // Navigate to register tournament page with tournament id
@@ -297,7 +297,7 @@ const Home = () => {
   const fetchNews = async () => {
     try {
       const response = await fetch(
-        "https://newsapi.org/v2/everything?q=cricket&sortBy=publishedAt&apiKey=20f109bb98d642aba213bef1b2549eec"
+        "https://newsapi.org/v2/everything?q=cricket&sortBy=publishedAt&apiKey=20f109bb98d642aba213bef1b2549eec",
       );
       const jsonData = await response.json();
       const topEightArticles = jsonData.articles.slice(0, 6);
@@ -349,7 +349,7 @@ const Home = () => {
               const allUsers = snapshot.val();
               if (allUsers) {
                 const userFound = Object.values(allUsers).find(
-                  (user) => user.email === emailGlobal
+                  (user) => user.email === emailGlobal,
                 );
 
                 if (userFound) {

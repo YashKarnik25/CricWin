@@ -1,8 +1,8 @@
 import React, { createContext, useState, ReactNode } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
-import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { createBottomTabNavigator } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createNativeStackNavigator } from "expo-router/native-stack";
 
 import HomeScreen from "./index";
 import AddTournament from "./addTournament";
@@ -105,7 +105,7 @@ const AdminBottomTabNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
+          let iconName: keyof typeof Ionicons.glyphMap = "home";
           if (route.name === "Dashboard") {
             iconName = focused ? "home" : "home-outline";
           } else if (route.name === "Add") {

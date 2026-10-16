@@ -17,7 +17,7 @@ import {
 import { ref, get } from "firebase/database";
 import { database } from "./firebase";
 import { UserContext } from "./_layout";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import {

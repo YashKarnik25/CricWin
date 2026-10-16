@@ -15,7 +15,7 @@ import {
 } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation } from "expo-router/react-navigation";
 import { Card } from "./Card";
 import { database } from "./firebase";
 import {
@@ -115,14 +115,14 @@ const IndexScreen = ({ navigation }) => {
     }, []);
 
     const lowTier = tournaments.filter(
-      (t) => Number.parseInt(t.prizePool) < 10000
+      (t) => Number.parseInt(t.prizePool) < 10000,
     );
     const midTier = tournaments.filter((t) => {
       const pool = Number.parseInt(t.prizePool);
       return pool >= 10000 && pool < 50000;
     });
     const highTier = tournaments.filter(
-      (t) => Number.parseInt(t.prizePool) >= 50000
+      (t) => Number.parseInt(t.prizePool) >= 50000,
     );
 
     return (
@@ -259,7 +259,7 @@ const IndexScreen = ({ navigation }) => {
       const teamQuery = query(
         teamRef,
         orderByChild("teamName"),
-        equalTo(teamName)
+        equalTo(teamName),
       );
       const entryFeeRef = ref(database, `tournaments/${tournamentId}/entryFee`);
       const snapshot = await get(entryFeeRef);
@@ -282,16 +282,16 @@ const IndexScreen = ({ navigation }) => {
                 } else {
                   Alert.alert(
                     "Error",
-                    "Google Pay is not installed or UPI is not supported."
+                    "Google Pay is not installed or UPI is not supported.",
                   );
                 }
                 const tournamentTeamsRef = ref(
                   database,
-                  `tournaments/${tournamentId}/teams`
+                  `tournaments/${tournamentId}/teams`,
                 );
                 const tournamentSlotsRef = ref(
                   database,
-                  `tournaments/${tournamentId}/slots`
+                  `tournaments/${tournamentId}/slots`,
                 );
                 const snapshot = await get(tournamentTeamsRef);
                 const existingTeams = snapshot.exists() ? snapshot.val() : [];
@@ -488,7 +488,7 @@ const IndexScreen = ({ navigation }) => {
             InitialStatObj.email = form.email;
             const playerRef = ref(
               database,
-              `playerStats/${form.firstname + " " + form.lastname}`
+              `playerStats/${form.firstname + " " + form.lastname}`,
             );
             set(playerRef, InitialStatObj);
           };
@@ -685,7 +685,7 @@ const IndexScreen = ({ navigation }) => {
         const fetchUserQuery = query(
           userRef,
           orderByChild("email"),
-          equalTo(email)
+          equalTo(email),
         );
         const snapshot = await get(fetchUserQuery);
 
@@ -705,7 +705,7 @@ const IndexScreen = ({ navigation }) => {
         console.error("Login error:", error);
         Alert.alert(
           "Error",
-          "An error occurred during login. Please try again."
+          "An error occurred during login. Please try again.",
         );
       }
     };
