@@ -10,10 +10,9 @@ import {
   Platform,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { ref, push } from "firebase/database";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import * as ImagePicker from "expo-image-picker";
 
 const AddTournament = ({ navigation }) => {
   const [name, setName] = useState("");
@@ -52,7 +51,12 @@ const AddTournament = ({ navigation }) => {
   };
 
   const handleSubmit = async () => {
-    // Strict empty field validation
+    const numericValues = {
+      prizePool: Number(prizePool.trim()),
+      entryFee: Number(entryFee.trim()),
+      overs: Number(overs.trim()),
+      slots: Number(slots.trim()),
+    };
     if (
       !name.trim() ||
       !prizePool.trim() ||
@@ -67,6 +71,20 @@ const AddTournament = ({ navigation }) => {
       Alert.alert("Error", "Please fill in all fields with valid data.");
       return;
     }
+    if (
+      Object.values(numericValues).some(
+        (value) => !Number.isFinite(value) || value <= 0,
+      )
+    ) {
+      Alert.alert("Error", "Prize pool, entry fee, overs, and slots must be positive numbers.");
+      return;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (date1 < today) {
+      Alert.alert("Error", "Tournament date cannot be in the past.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -75,13 +93,14 @@ const AddTournament = ({ navigation }) => {
       const newTournament = {
         tid,
         name: name.trim(),
-        prizePool: parseInt(prizePool),
-        entryFee: parseInt(entryFee),
+        prizePool: numericValues.prizePool,
+        entryFee: numericValues.entryFee,
         location: location.trim(),
         ballType: ballType.trim(),
-        overs: parseInt(overs),
-        slots: parseInt(slots),
+        overs: numericValues.overs,
+        slots: numericValues.slots,
         date,
+        description: description.trim(),
         status: "upcoming",
         teams: [],
         createdAt: new Date().toISOString(),

@@ -9,7 +9,7 @@ import {
   Alert,
 } from "react-native";
 
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import {
   ref,
   push,

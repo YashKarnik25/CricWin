@@ -21,7 +21,7 @@ import {
   get,
   set,
 } from "firebase/database";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { Ionicons } from "@expo/vector-icons";
 import { Link } from "expo-router";
 import { useNavigation } from "expo-router/react-navigation";
@@ -89,8 +89,8 @@ const TeamRegistrationForm = ({
   navigation,
   teamName,
   setTeamName,
-  email,
-  setEmail,
+  teamEmail,
+  setTeamEmail,
   contact,
   setContact,
   players,
@@ -118,8 +118,8 @@ const TeamRegistrationForm = ({
         />
         <TextInput
           style={styles.input}
-          value={email}
-          onChangeText={setEmail}
+          value={teamEmail}
+          onChangeText={setTeamEmail}
           placeholder="Team Email"
           placeholderTextColor="#94a3b8"
           keyboardType="email-address"
@@ -168,7 +168,7 @@ const TeamRegistrationForm = ({
 const MoreScreen = () => {
   const [selectedScreen, setSelectedScreen] = useState("menu");
   const navigation = useNavigation();
-  const { emailGlobal, setEmailGlobal } = useContext(UserContext);
+  const { emailGlobal, setEmailGlobal, setRoleGlobal } = useContext(UserContext);
 
   // Authentication States
   const [authView, setAuthView] = useState("login");
@@ -209,7 +209,7 @@ const MoreScreen = () => {
   }, [selectedScreen]);
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [sponsorEmail, setSponsorEmail] = useState("");
   const [mode, setMode] = useState("digital");
   const [duration, setDuration] = useState("15 days");
   const [amount, setAmount] = useState(0);
@@ -274,13 +274,13 @@ const MoreScreen = () => {
       return;
     }
 
-    if (!email.trim()) {
+    if (!sponsorEmail.trim()) {
       Alert.alert("Missing Information", "Please enter your email");
       return;
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(sponsorEmail.trim())) {
       Alert.alert("Invalid Email", "Please enter a valid email address");
       return;
     }
@@ -290,7 +290,7 @@ const MoreScreen = () => {
       const newSponsorRef = push(sponsorsRef);
       await set(newSponsorRef, {
         name,
-        email,
+        email: sponsorEmail.trim().toLowerCase(),
         mode,
         duration,
         amount,
@@ -303,7 +303,7 @@ const MoreScreen = () => {
           `🏏 *CRICKWIN SPONSORSHIP REQUEST* 🏏\n\n` +
             `*Sponsor ID:* ${sponsorId}\n` +
             `*Name:* ${name}\n` +
-            `*Email:* ${email}\n` +
+            `*Email:* ${sponsorEmail.trim().toLowerCase()}\n` +
             `*Mode:* ${mode}\n` +
             `*Duration:* ${duration}\n` +
             `*Amount:* ₹${amount}\n\n` +
@@ -326,7 +326,7 @@ const MoreScreen = () => {
       } else {
         Alert.alert(
           "Form Submitted",
-          `Name: ${name}\nEmail: ${email}\nMode: ${mode}\nDuration: ${duration}\nAmount: ₹${amount}`,
+          `Name: ${name}\nEmail: ${sponsorEmail.trim().toLowerCase()}\nMode: ${mode}\nDuration: ${duration}\nAmount: ₹${amount}`,
         );
       }
     } catch (e) {
@@ -350,88 +350,93 @@ const MoreScreen = () => {
 
   const [teamName, setTeamName] = useState("");
   const [players, setPlayers] = useState(
-    Array(11).fill({ name: "", email: "" }),
+    Array.from({ length: 11 }, () => ({ name: "", email: "" })),
   );
+  const [teamEmail, setTeamEmail] = useState("");
   const [contact, setContact] = useState("");
 
-  const handleSubmitTeam = () => {
+  const handleSubmitTeam = async () => {
+    const normalizedEmails = players.map((player) =>
+      player.email.trim().toLowerCase(),
+    );
+    const emailCounts = normalizedEmails.reduce((counts, playerEmail) => {
+      if (playerEmail) counts[playerEmail] = (counts[playerEmail] || 0) + 1;
+      return counts;
+    }, {});
+    const duplicateEmails = Object.keys(emailCounts).filter(
+      (playerEmail) => emailCounts[playerEmail] > 1,
+    );
+    if (duplicateEmails.length > 0) {
+      Alert.alert(
+        "Duplicate Player Emails",
+        `Each player must have a unique email. Duplicates: ${duplicateEmails.join(", ")}`,
+      );
+      return;
+    }
+    const normalizedTeamName = teamName.trim();
+    const normalizedTeamEmail = teamEmail.trim().toLowerCase();
     if (
-      !teamName ||
-      players.some((player) => !player.name || !player.email) ||
-      !email ||
-      !contact
+      !normalizedTeamName ||
+      players.some((player, index) => !player.name.trim() || !normalizedEmails[index]) ||
+      !normalizedTeamEmail ||
+      !contact.trim()
     ) {
       Alert.alert("Error", "Please fill in all fields");
       return;
     }
-
-    const playersArray = players.reduce((acc, player, index) => {
-      acc.push({ name: player.name, email: player.email });
-      return acc;
-    }, []);
-
-    const newTeam = {
-      teamName,
-      email,
-      contact,
-      playersArray,
-    };
-
-    const teamRef = ref(database, "teams/");
-    const emailRef = ref(database, `user/`);
-
-    async function getPlayerByEmail(emails) {
-      try {
-        const emailChecks = emails.map((email) =>
-          query(emailRef, orderByChild("email"), equalTo(email)),
-        );
-
-        const emailChecks2 = query(
-          teamRef,
-          orderByChild("email"),
-          equalTo(email),
-        );
-
-        const results = await Promise.all(
-          emailChecks.map((emailQuery) => get(emailQuery)),
-        );
-
-        const results2 = await get(emailChecks2);
-
-        if (results2.exists()) {
-          Alert.alert("Alert", "Email already registered");
-          return;
-        }
-
-        const allExist = results.every((snapshot) => snapshot.exists());
-
-        if (allExist) {
-          push(teamRef, newTeam)
-            .then(() => {
-              Alert.alert(
-                "Success",
-                "Team registration submitted successfully!",
-              );
-            })
-            .catch((error) => {
-              console.error("Error adding team: ", error);
-              Alert.alert("Error", "Failed to add team");
-            });
-        } else {
-          const missingEmails = emails.filter(
-            (email, index) => !results[index].exists(),
-          );
-          Alert.alert(
-            "Alert",
-            "Following Emails do not exist:" + `\n${missingEmails.toString()}`,
-          );
-        }
-      } catch (error) {
-        Alert.alert("Alert", error.message);
-      }
+    if (new Set(normalizedEmails).size !== 11) {
+      Alert.alert("Error", "Exactly 11 unique player email addresses are required.");
+      return;
     }
 
-    getPlayerByEmail(players.map((player) => player.email));
+    try {
+      const teamRef = ref(database, "teams");
+      const teamsSnapshot = await get(teamRef);
+      const teamExists =
+        teamsSnapshot.exists() &&
+        Object.values(teamsSnapshot.val()).some(
+          (team) =>
+            String(team.teamName || "").trim().toLowerCase() ===
+            normalizedTeamName.toLowerCase(),
+        );
+      if (teamExists) {
+        Alert.alert("Duplicate Team", "A team with this name is already registered.");
+        return;
+      }
+
+      const emailRef = ref(database, "user");
+      const results = await Promise.all(
+        normalizedEmails.map((playerEmail) =>
+          get(query(emailRef, orderByChild("email"), equalTo(playerEmail))),
+        ),
+      );
+      const missingEmails = normalizedEmails.filter(
+        (_, index) => !results[index].exists(),
+      );
+      if (missingEmails.length > 0) {
+        Alert.alert(
+          "Unregistered Players",
+          `These player emails do not have accounts:\n${missingEmails.join(", ")}`,
+        );
+        return;
+      }
+
+      const playersArray = players.map((player, index) => ({
+        name: player.name.trim(),
+        email: normalizedEmails[index],
+      }));
+      await push(teamRef, {
+        teamName: normalizedTeamName,
+        email: normalizedTeamEmail,
+        ownerEmail: emailGlobal.trim().toLowerCase(),
+        contact: contact.trim(),
+        playersArray,
+      });
+      Alert.alert("Success", "Team registration submitted successfully!");
+    } catch (error) {
+      console.error("Error registering team:", error);
+      Alert.alert("Error", "Failed to add team. Please try again.");
+    }
   };
 
   const handleLoginSubmit = async () => {
@@ -448,14 +453,15 @@ const MoreScreen = () => {
       const fetchUserQuery = query(
         userRef,
         orderByChild("email"),
-        equalTo(loginEmail),
+        equalTo(loginEmail.trim().toLowerCase()),
       );
       const snapshot = await get(fetchUserQuery);
 
       if (snapshot.exists()) {
         const userData = Object.values(snapshot.val())[0];
         if (userData.password === loginPassword) {
-          setEmailGlobal(loginEmail);
+          setEmailGlobal(loginEmail.trim().toLowerCase());
+          setRoleGlobal(userData.role || "");
           Alert.alert("Success", "Logged in successfully!");
           setSelectedScreen("menu");
         } else {
@@ -470,7 +476,7 @@ const MoreScreen = () => {
     }
   };
 
-  const handleSignupSubmit = () => {
+  const handleSignupSubmit = async () => {
     const {
       firstname,
       lastname,
@@ -481,15 +487,24 @@ const MoreScreen = () => {
       confirmPassword,
     } = signupForm;
 
+    const normalizedEmail = email.trim().toLowerCase();
     if (
       !firstname.trim() ||
       !lastname.trim() ||
-      !email.trim() ||
+      !normalizedEmail ||
       !contact.trim() ||
       !password.trim() ||
       !confirmPassword.trim()
     ) {
       Alert.alert("Error", "Please fill in all fields.");
+      return;
+    }
+    if (!["player", "owner"].includes(role)) {
+      Alert.alert("Invalid Role", "Choose Player or Manager to create an account.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      Alert.alert("Invalid Email", "Please enter a valid email address.");
       return;
     }
 
@@ -498,31 +513,40 @@ const MoreScreen = () => {
       return;
     }
 
-    const newUser = { firstname, lastname, email, contact, role, password };
     const userRef = ref(database, "user");
-
-    push(userRef, newUser)
-      .then(() => {
-        Alert.alert("Success", "Account created successfully!");
-        const statRef = ref(database, "playerStats");
-        const InitialStatObj = {
-          matches: 0,
-          batting: { runs: 0, balls: 0, average: 1, strikeRate: 1 },
-          bowling: { balls: 0, runs: 0, wickets: 0 },
-        };
-        InitialStatObj.email = signupForm.email;
-        const playerRef = ref(
-          database,
-          `playerStats/${signupForm.firstname + " " + signupForm.lastname}`,
-        );
-        set(playerRef, InitialStatObj);
-
-        setAuthView("login");
-      })
-      .catch((error) => {
-        console.error("Error adding User: ", error);
-        Alert.alert("Error", "Failed to add User");
+    try {
+      const duplicate = await get(
+        query(userRef, orderByChild("email"), equalTo(normalizedEmail)),
+      );
+      if (duplicate.exists()) {
+        Alert.alert("Duplicate Email", "An account already exists for this email.");
+        return;
+      }
+      await push(userRef, {
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
+        email: normalizedEmail,
+        contact: contact.trim(),
+        role,
+        password,
       });
+      const initialStats = {
+        matches: 0,
+        batting: { runs: 0, balls: 0, average: 0, strikeRate: 0 },
+        bowling: { balls: 0, runs: 0, wickets: 0 },
+        catches: 0,
+        email: normalizedEmail,
+        tournaments: {},
+        matchHistory: {},
+      };
+      const playerName = `${firstname.trim()} ${lastname.trim()}`;
+      await set(ref(database, `playerStats/${playerName}`), initialStats);
+      Alert.alert("Success", "Account created successfully!");
+      setAuthView("login");
+    } catch (error) {
+      console.error("Error adding User:", error);
+      Alert.alert("Error", "Failed to create account. Please try again.");
+    }
   };
 
   return (
@@ -582,6 +606,7 @@ const MoreScreen = () => {
                       ]}
                       onPress={() => {
                         setEmailGlobal("");
+                        setRoleGlobal("");
                         Alert.alert("Success", "Logged out successfully");
                         setSelectedScreen("menu");
                       }}
@@ -831,8 +856,8 @@ const MoreScreen = () => {
                 <TeamRegistrationForm
                   teamName={teamName}
                   setTeamName={setTeamName}
-                  email={email}
-                  setEmail={setEmail}
+                  teamEmail={teamEmail}
+                  setTeamEmail={setTeamEmail}
                   contact={contact}
                   setContact={setContact}
                   players={players}
@@ -1101,8 +1126,8 @@ const MoreScreen = () => {
                     style={styles.input}
                     placeholder="Email"
                     placeholderTextColor="#999"
-                    value={email}
-                    onChangeText={setEmail}
+                    value={sponsorEmail}
+                    onChangeText={setSponsorEmail}
                     keyboardType="email-address"
                   />
 

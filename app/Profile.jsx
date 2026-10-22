@@ -12,17 +12,16 @@ import {
   Modal,
 } from "react-native";
 import { ref, query, orderByChild, equalTo, get } from "firebase/database";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { UserContext } from "./_layout";
 import { useIsFocused } from "expo-router/react-navigation";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 
-const { height } = Dimensions.get("window");
-
 const Profile = () => {
   const { emailGlobal } = useContext(UserContext);
   const [profileData, setProfileData] = useState(null);
+  const [managerPerformance, setManagerPerformance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedSticker, setSelectedSticker] = useState(
     require("../assets/images/profile/p1.jpg")
@@ -36,58 +35,138 @@ const Profile = () => {
   const isFocused = useIsFocused();
 
   useEffect(() => {
-    const fetchPlayerStats = async () => {
-      try {
-        const playerStatsRef = ref(database, "playerStats");
-        const playerQuery = query(
-          playerStatsRef,
-          orderByChild("email"),
-          equalTo(emailGlobal)
-        );
-        const snapshot = await get(playerQuery);
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          const data2 = Object.values(data)[0];
-          setProfileData(data2);
-        } else {
-          console.log("No record found for email", emailGlobal);
-          setProfileData(null);
-        }
-      } catch (error) {
-        console.error("Error fetching player stats:", error);
+    let isMounted = true;
+    const fetchProfile = async () => {
+      if (!emailGlobal) {
+        setProfileData(null);
+        setManagerPerformance([]);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+      try {
+        const [playerStatsSnapshot, userSnapshot] = await Promise.all([
+          get(
+            query(
+              ref(database, "playerStats"),
+              orderByChild("email"),
+              equalTo(emailGlobal),
+            ),
+          ),
+          get(
+            query(
+              ref(database, "user"),
+              orderByChild("email"),
+              equalTo(emailGlobal),
+            ),
+          ),
+        ]);
+        const stats = playerStatsSnapshot.exists()
+          ? Object.values(playerStatsSnapshot.val())[0]
+          : {};
+        const userInfo = userSnapshot.exists()
+          ? Object.values(userSnapshot.val())[0]
+          : {};
+        const profile = {
+          ...stats,
+          name: `${userInfo.firstname || ""} ${userInfo.lastname || ""}`.trim(),
+          email: emailGlobal,
+          contact: userInfo.contact || "",
+          role: userInfo.role || "",
+          matches: Number(stats.matches) || 0,
+          batting: stats.batting || {},
+          bowling: stats.bowling || {},
+          catches: Number(stats.catches) || 0,
+        };
+        if (isMounted) setProfileData(profile);
+
+        if (userInfo.role !== "owner") {
+          if (isMounted) setManagerPerformance([]);
+          return;
+        }
+
+        const [teamsSnapshot, tournamentsSnapshot, matchesSnapshot, allStatsSnapshot] =
+          await Promise.all([
+            get(ref(database, "teams")),
+            get(ref(database, "tournaments")),
+            get(ref(database, "matches")),
+            get(ref(database, "playerStats")),
+          ]);
+        const teams = teamsSnapshot.exists()
+          ? Object.values(teamsSnapshot.val())
+          : [];
+        const tournaments = tournamentsSnapshot.exists()
+          ? tournamentsSnapshot.val()
+          : {};
+        const allMatches = matchesSnapshot.exists()
+          ? matchesSnapshot.val()
+          : {};
+        const allPlayerStats = allStatsSnapshot.exists()
+          ? allStatsSnapshot.val()
+          : {};
+        const ownedTeams = teams.filter((team) =>
+          String(team.ownerEmail || team.email || "")
+            .trim()
+            .toLowerCase() === emailGlobal.trim().toLowerCase(),
+        );
+        const performance = ownedTeams.map((team) => {
+          const teamTournaments = Object.entries(tournaments)
+            .filter(([, tournament]) => {
+              const registeredTeams = Array.isArray(tournament.teams)
+                ? tournament.teams
+                : Object.values(tournament.teams || {});
+              return registeredTeams.includes(team.teamName);
+            })
+            .map(([id, tournament]) => ({
+              id,
+              name: tournament.name || id,
+              status: tournament.status || "upcoming",
+            }));
+          const teamMatches = Object.entries(allMatches)
+            .filter(([, item]) => item.team1 === team.teamName || item.team2 === team.teamName)
+            .map(([id, item]) => ({
+              id,
+              opponent:
+                item.team1 === team.teamName ? item.team2 : item.team1,
+              winner: item.winner || "Pending",
+              result:
+                item.scoreCard?.firstInning && item.scoreCard?.secondInning
+                  ? `${item.scoreCard.firstInning.team1TotalRuns || 0} - ${item.scoreCard.secondInning.team2TotalRuns || 0}`
+                  : "Not played",
+            }));
+          const squad = (team.playersArray || []).map((player) => {
+            const playerStats = Object.values(allPlayerStats).find(
+              (statsEntry) =>
+                String(statsEntry.email || "").toLowerCase() ===
+                String(player.email || "").toLowerCase(),
+            );
+            return {
+              name: player.name,
+              matches: Number(playerStats?.matches) || 0,
+              runs: Number(playerStats?.batting?.runs) || 0,
+              wickets: Number(playerStats?.bowling?.wickets) || 0,
+              catches: Number(playerStats?.catches) || 0,
+            };
+          });
+          return {
+            teamName: team.teamName,
+            tournaments: teamTournaments,
+            matches: teamMatches,
+            squad,
+          };
+        });
+        if (isMounted) setManagerPerformance(performance);
+      } catch (error) {
+        console.error("Error fetching profile and performance:", error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     };
 
-    const fetchUserInfo = async () => {
-      try {
-        const userRef = ref(database, "user");
-        const userQuery = query(
-          userRef,
-          orderByChild("email"),
-          equalTo(emailGlobal)
-        );
-        const snapshot = await get(userQuery);
-        if (snapshot.exists()) {
-          const userData = snapshot.val();
-          const userInfo = Object.values(userData)[0];
-          setProfileData((prevData) => ({
-            ...prevData,
-            name: `${userInfo.firstname} ${userInfo.lastname}`,
-            email: userInfo.email,
-            contact: userInfo.contact,
-            role: userInfo.role,
-          }));
-        } else {
-          console.log("No user record found for email", emailGlobal);
-        }
-      } catch (error) {
-        console.error("Error fetching user info:", error);
-      }
+    setLoading(true);
+    fetchProfile();
+    return () => {
+      isMounted = false;
     };
-
-    fetchPlayerStats();
-    fetchUserInfo();
   }, [emailGlobal]);
 
   useEffect(() => {
@@ -269,6 +348,107 @@ const Profile = () => {
             <Text style={styles.cardTextFet}>{bowlingData.wickets}</Text>
           </View>
         </Animated.View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Overall Fielding</Text>
+          <View style={styles.tableRow}>
+            <Text style={styles.cardText}>Catches</Text>
+            <Text style={styles.cardTextFet}>{profileData.catches || 0}</Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Tournament-wise Stats</Text>
+          {Object.entries(profileData.tournaments || {}).length === 0 ? (
+            <Text style={styles.cardText}>No tournament stats yet.</Text>
+          ) : (
+            Object.entries(profileData.tournaments || {}).map(
+              ([tournamentId, stats]) => (
+                <View key={tournamentId} style={styles.statsBlock}>
+                  <Text style={styles.sectionTitle}>
+                    {stats.name || tournamentId}
+                  </Text>
+                  <Text style={styles.cardText}>
+                    Matches: {stats.matches || 0} · Runs: {stats.batting?.runs || 0} ·
+                    Balls: {stats.batting?.balls || 0}
+                  </Text>
+                  <Text style={styles.cardText}>
+                    SR: {Number(stats.batting?.strikeRate || 0).toFixed(2)} ·
+                    Average: {Number(stats.batting?.average || 0).toFixed(2)}
+                  </Text>
+                  <Text style={styles.cardText}>
+                    Wickets: {stats.bowling?.wickets || 0} · Catches:{" "}
+                    {stats.catches || 0}
+                  </Text>
+                </View>
+              ),
+            )
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Match-wise Stats</Text>
+          {Object.entries(profileData.matchHistory || {}).length === 0 ? (
+            <Text style={styles.cardText}>No match stats yet.</Text>
+          ) : (
+            Object.entries(profileData.matchHistory || {}).map(
+              ([matchId, stats]) => (
+                <View key={matchId} style={styles.statsBlock}>
+                  <Text style={styles.sectionTitle}>
+                    Match {matchId} · {stats.winner || "Result pending"}
+                  </Text>
+                  <Text style={styles.cardText}>
+                    Runs: {stats.batting?.runs || 0} · Balls:{" "}
+                    {stats.batting?.balls || 0} · SR:{" "}
+                    {Number(stats.batting?.strikeRate || 0).toFixed(2)} · Avg:{" "}
+                    {Number(stats.batting?.average || 0).toFixed(2)}
+                  </Text>
+                  <Text style={styles.cardText}>
+                    Wickets: {stats.bowling?.wickets || 0} · Catches:{" "}
+                    {stats.catches || 0}
+                  </Text>
+                </View>
+              ),
+            )
+          )}
+        </View>
+
+        {role === "owner" && (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>My Team Performance</Text>
+            {managerPerformance.length === 0 ? (
+              <Text style={styles.cardText}>No registered team found.</Text>
+            ) : (
+              managerPerformance.map((teamPerformance) => (
+                <View key={teamPerformance.teamName} style={styles.statsBlock}>
+                  <Text style={styles.sectionTitle}>
+                    {teamPerformance.teamName}
+                  </Text>
+                  <Text style={styles.cardText}>Tournaments</Text>
+                  {teamPerformance.tournaments.map((tournament) => (
+                    <Text key={tournament.id} style={styles.cardText}>
+                      {tournament.name} · {tournament.status}
+                    </Text>
+                  ))}
+                  <Text style={styles.cardText}>Match Results</Text>
+                  {teamPerformance.matches.map((teamMatch) => (
+                    <Text key={teamMatch.id} style={styles.cardText}>
+                      vs {teamMatch.opponent}: {teamMatch.result} ·{" "}
+                      {teamMatch.winner}
+                    </Text>
+                  ))}
+                  <Text style={styles.cardText}>Squad Stats</Text>
+                  {teamPerformance.squad.map((player) => (
+                    <Text key={`${teamPerformance.teamName}-${player.name}`} style={styles.cardText}>
+                      {player.name}: {player.matches} matches, {player.runs} runs,{" "}
+                      {player.wickets} wickets, {player.catches} catches
+                    </Text>
+                  ))}
+                </View>
+              ))
+            )}
+          </View>
+        )}
       </ScrollView>
 
       <Modal
@@ -424,6 +604,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 6,
+  },
+  statsBlock: {
+    borderTopWidth: 1,
+    borderTopColor: "#e5e7eb",
+    paddingTop: 10,
+    marginTop: 10,
   },
   cardText: {
     fontSize: 18,

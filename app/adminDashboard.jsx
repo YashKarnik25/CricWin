@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { ref, onValue, query, orderByChild } from "firebase/database";
 import { Ionicons } from "@expo/vector-icons";
 

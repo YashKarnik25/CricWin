@@ -21,7 +21,7 @@ import {
   remove,
   update,
 } from "firebase/database";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { LinearGradient } from "expo-linear-gradient";
 import ScoreScreen from "./ScoreNew";
 import { BlurView } from "expo-blur";

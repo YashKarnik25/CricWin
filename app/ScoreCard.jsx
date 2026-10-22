@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Picker } from "@react-native-picker/picker";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { ref, query, orderByChild, equalTo, get } from "firebase/database";
 
 const Scorecard = ({ match, battingFirstTeam }) => {

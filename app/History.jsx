@@ -14,8 +14,14 @@ import {
   SafeAreaView,
   StatusBar,
 } from "react-native";
-import { ref, get } from "firebase/database";
-import { database } from "./firebase";
+import {
+  ref,
+  get,
+  query,
+  orderByChild,
+  equalTo,
+} from "firebase/database";
+import { database } from "../lib/firebase";
 import { UserContext } from "./_layout";
 import { useIsFocused } from "expo-router/react-navigation";
 import { LinearGradient } from "expo-linear-gradient";
@@ -65,9 +71,8 @@ const MatchStats = ({ stats }) => {
 };
 
 const ScorecardModal = ({ visible, match, onClose }) => {
-  if (!match) return null;
-
   const [activeTab, setActiveTab] = useState(0);
+  if (!match) return null;
 
   const team1 = match.teams.team1;
   const team2 = match.teams.team2;
@@ -941,12 +946,18 @@ const MatchCard = ({ match, userTeam, index, navigation }) => {
   const team1Wickets = match.scoreCard?.firstInning?.team1Wickets || 0;
   const team2Wickets = match.scoreCard?.secondInning?.team2Wickets || 0;
 
-  let result = "draw";
-  if (team1Score > team2Score) {
-    result = isTeam1 ? "won" : "lost";
-  } else if (team2Score > team1Score) {
-    result = isTeam1 ? "lost" : "won";
-  }
+  const result =
+    match.winner === "Match Tied!"
+      ? "draw"
+      : match.winner
+        ? match.winner === userTeam
+          ? "won"
+          : "lost"
+        : team1Score === team2Score
+          ? "draw"
+          : (team1Score > team2Score) === isTeam1
+            ? "won"
+            : "lost";
 
   const matchDate = match.date ? new Date(match.date) : new Date();
   const formattedDate = matchDate.toLocaleDateString("en-US", {
@@ -1058,6 +1069,21 @@ const MatchCard = ({ match, userTeam, index, navigation }) => {
           </View>
 
           <MatchStats stats={stats} />
+          {match.personalStats && (
+            <View style={styles.personalStatsContainer}>
+              <Text style={styles.personalStatsTitle}>Your Match Stats</Text>
+              <Text style={styles.personalStatsText}>
+                Runs {match.personalStats.batting?.runs || 0} · Balls{" "}
+                {match.personalStats.batting?.balls || 0} · SR{" "}
+                {Number(match.personalStats.batting?.strikeRate || 0).toFixed(2)} ·
+                Avg {Number(match.personalStats.batting?.average || 0).toFixed(2)}
+              </Text>
+              <Text style={styles.personalStatsText}>
+                Wickets {match.personalStats.bowling?.wickets || 0} · Catches{" "}
+                {match.personalStats.catches || 0}
+              </Text>
+            </View>
+          )}
         </LinearGradient>
       </Animated.View>
 
@@ -1122,8 +1148,10 @@ const StatsSummary = ({ matches, userTeam }) => {
     const team2Score = match.scoreCard?.secondInning?.team2TotalRuns || 0;
 
     if (
-      (isTeam1 && team1Score > team2Score) ||
-      (!isTeam1 && team2Score > team1Score)
+      (match.winner && match.winner === userTeam) ||
+      (!match.winner &&
+        ((isTeam1 && team1Score > team2Score) ||
+          (!isTeam1 && team2Score > team1Score)))
     ) {
       wins++;
     }
@@ -1208,10 +1236,20 @@ const History = ({ navigation }) => {
           let foundTeam = "";
           Object.values(teams).forEach((teamObj) => {
             teamObj?.playersArray?.forEach((player) => {
-              if (player.email === emailGlobal) {
+              if (
+                String(player.email || "").toLowerCase() ===
+                emailGlobal.toLowerCase()
+              ) {
                 foundTeam = teamObj.teamName;
               }
             });
+            if (
+              teamObj &&
+              String(teamObj.ownerEmail || teamObj.email || "").toLowerCase() ===
+                emailGlobal.toLowerCase()
+            ) {
+              foundTeam = teamObj.teamName;
+            }
           });
           setTeam(foundTeam);
         } else {
@@ -1227,7 +1265,12 @@ const History = ({ navigation }) => {
 
   useEffect(() => {
     const fetchMatches = async () => {
-      if (!team) return;
+      if (!team) {
+        setMatches([]);
+        setProcessedMatches([]);
+        setLoading(false);
+        return;
+      }
       try {
         const matchRef = ref(database, "matches");
         const snapshot = await get(matchRef);
@@ -1258,22 +1301,35 @@ const History = ({ navigation }) => {
 
   useEffect(() => {
     const getMatchData = async () => {
+      const playerStatsSnapshot = await get(
+        query(
+          ref(database, "playerStats"),
+          orderByChild("email"),
+          equalTo(emailGlobal),
+        ),
+      );
+      const playerStats = playerStatsSnapshot.exists()
+        ? Object.values(playerStatsSnapshot.val())[0]
+        : {};
       const promises = matches.map(async (matchId) => {
         const matchRef = ref(database, `matches/${matchId}`);
         const snapshot = await get(matchRef);
         if (snapshot.exists()) {
           const matchData = snapshot.val();
-          const scoreData = Object.values(matchData)[0];
-          const scoreCard = scoreData.scoreCard;
+          const scoreCard = matchData.scoreCard || {};
           const teams = {
-            team1: matchData.team1,
-            team2: matchData.team2,
+          team1: matchData.team1,
+          team2: matchData.team2,
           };
           return {
-            id: matchId,
-            scoreCard,
-            teams,
-            date: matchData.date || new Date().toISOString(),
+          id: matchId,
+          scoreCard,
+          teams,
+          winner: matchData.winner || "",
+          personalStats: playerStats.matchHistory?.[matchId] || null,
+          tournamentStats:
+            playerStats.tournaments?.[matchData.tournamentId] || null,
+          date: matchData.date || new Date().toISOString(),
           };
         }
         return null;
@@ -1290,7 +1346,7 @@ const History = ({ navigation }) => {
     if (matches.length > 0) {
       getMatchData();
     }
-  }, [matches]);
+  }, [matches, emailGlobal]);
 
   const filteredMatches = processedMatches.filter((match) => {
     if (activeFilter === "all") return true;
@@ -1300,17 +1356,21 @@ const History = ({ navigation }) => {
     const team2Score = match.scoreCard?.secondInning?.team2TotalRuns;
 
     if (activeFilter === "won") {
-      return (
+      return match.winner
+        ? match.winner === team
+        : (
         (isTeam1 && team1Score > team2Score) ||
         (!isTeam1 && team2Score > team1Score)
-      );
+          );
     }
 
     if (activeFilter === "lost") {
-      return (
+      return match.winner
+        ? match.winner !== team && match.winner !== "Match Tied!"
+        : (
         (isTeam1 && team1Score < team2Score) ||
         (!isTeam1 && team2Score < team1Score)
-      );
+          );
     }
 
     if (activeFilter === "recent") {
@@ -1548,6 +1608,23 @@ const styles = StyleSheet.create({
   },
   cardGradient: {
     padding: 16,
+  },
+  personalStatsContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "#d8dee8",
+    marginTop: 12,
+    paddingTop: 10,
+  },
+  personalStatsTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2c3e50",
+    marginBottom: 4,
+  },
+  personalStatsText: {
+    fontSize: 12,
+    color: "#4b5563",
+    marginBottom: 3,
   },
   matchHeader: {
     flexDirection: "row",

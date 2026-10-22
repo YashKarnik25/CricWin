@@ -12,7 +12,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
-import { database } from "../firebase";
+import { database } from "../../lib/firebase";
 import { ref, onValue, remove } from "firebase/database";
 
 const ManagePlayers = ({ navigation }) => {

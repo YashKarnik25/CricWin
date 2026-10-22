@@ -16,8 +16,8 @@ import {
 import { StatusBar } from "expo-status-bar";
 import { LinearGradient } from "expo-linear-gradient";
 import { useNavigation } from "expo-router/react-navigation";
-import { Card } from "./Card";
-import { database } from "./firebase";
+import { Card } from "../components/Card";
+import { database } from "../lib/firebase";
 import {
   ref,
   onValue,
@@ -26,8 +26,8 @@ import {
   equalTo,
   get,
   orderByChild,
-  update,
   set,
+  runTransaction,
 } from "firebase/database";
 import { Picker } from "@react-native-picker/picker";
 import { UserContext } from "./_layout";
@@ -35,10 +35,15 @@ import { MaterialIcons } from "@expo/vector-icons";
 
 const { width } = Dimensions.get("window");
 const IndexScreen = ({ navigation }) => {
+  const { emailGlobal } = useContext(UserContext);
   const [currentState, setCurrentState] = useState("home");
   const [isLogin, setIsLogin] = useState(false);
   const [hasAnAccount, setHasAnAccount] = useState(true);
   const [tournamentId, setTournamentId] = useState("");
+
+  useEffect(() => {
+    setIsLogin(Boolean(emailGlobal));
+  }, [emailGlobal]);
 
   const TournamentCard = ({ tournament }) => {
     const navigation = useNavigation();
@@ -247,86 +252,147 @@ const IndexScreen = ({ navigation }) => {
   });
 
   const RegisterTournaments = ({ tid }) => {
+    const { emailGlobal, roleGlobal } = useContext(UserContext);
+    const tournamentId = tid;
     const teamRef = ref(database, "teams");
     const [teamName, setTeamName] = useState("");
     const [teamEmail, setTeamEmail] = useState("");
 
     const handleRegister = async () => {
-      if (!teamEmail || !teamName) {
+      const normalizedTeamName = teamName.trim();
+      const normalizedEmail = teamEmail.trim().toLowerCase();
+      const normalizedLoginEmail = emailGlobal.trim().toLowerCase();
+      if (!normalizedTeamName || !normalizedEmail) {
         Alert.alert("Error", "Please fill in all fields");
         return;
       }
-      const teamQuery = query(
-        teamRef,
-        orderByChild("teamName"),
-        equalTo(teamName),
-      );
-      const entryFeeRef = ref(database, `tournaments/${tournamentId}/entryFee`);
-      const snapshot = await get(entryFeeRef);
-      const entryFee = snapshot.val();
-      const appUrl =
-        "upi://pay?pa=yashkarnik25-1@okicici&pn=CricWun&am=" +
-        entryFee +
-        "&tn=Payment for Tournament Registration&cu=INR";
-
-      try {
-        const snapshot = await get(teamQuery);
-        if (snapshot.exists()) {
-          const data = snapshot.val();
-          Object.keys(data).map((keys) => {
-            if (data[keys].email === teamEmail) {
-              const addTeam = async () => {
-                const canOpen = await Linking.canOpenURL(appUrl);
-                if (canOpen) {
-                  await Linking.openURL(appUrl);
-                } else {
-                  Alert.alert(
-                    "Error",
-                    "Google Pay is not installed or UPI is not supported.",
-                  );
-                }
-                const tournamentTeamsRef = ref(
-                  database,
-                  `tournaments/${tournamentId}/teams`,
-                );
-                const tournamentSlotsRef = ref(
-                  database,
-                  `tournaments/${tournamentId}/slots`,
-                );
-                const snapshot = await get(tournamentTeamsRef);
-                const existingTeams = snapshot.exists() ? snapshot.val() : [];
-                const updatedTeams = [...existingTeams, teamName];
-                if (existingTeams.includes(teamName)) {
-                  Alert.alert("You have already registerd for this tournament");
-                  setCurrentState("home");
-                  return;
-                }
-                await update(ref(database, `tournaments/${tournamentId}`), {
-                  teams: updatedTeams,
-                });
-                const slots = await get(tournamentSlotsRef);
-                const currentSlots = slots.exists() ? slots.val() : 8;
-                const updatedSlots = currentSlots - 1;
-                await update(ref(database, `tournaments/${tournamentId}`), {
-                  slots: updatedSlots,
-                });
-              };
-              addTeam();
-              setTimeout(() => {
-                Alert.alert("Succsess", "👍");
-              }, 2000);
-            } else {
-              Alert.alert("Error", "Invalid email for this team");
-            }
-          });
-        } else {
-          Alert.alert("No Such Team", `Please register you team first`);
-        }
-      } catch (error) {
-        console.error("Error fetching data:", error);
+      if (roleGlobal !== "owner") {
+        Alert.alert("Manager Required", "Only a team manager can register a team.");
+        return;
       }
+      try {
+        const userQuery = query(
+          ref(database, "user"),
+          orderByChild("email"),
+          equalTo(normalizedLoginEmail),
+        );
+        const userSnapshot = await get(userQuery);
+        const account = userSnapshot.exists()
+          ? Object.values(userSnapshot.val())[0]
+          : null;
+        if (!account || account.role !== "owner" || roleGlobal !== "owner") {
+          Alert.alert("Manager Required", "Sign in with a manager account to register.");
+          return;
+        }
 
-      // console.log(entryFee);
+        const teamsSnapshot = await get(teamRef);
+        const matchingTeam = teamsSnapshot.exists()
+          ? Object.values(teamsSnapshot.val()).find(
+              (team) =>
+                String(team.teamName || "").trim().toLowerCase() ===
+                normalizedTeamName.toLowerCase(),
+            )
+          : null;
+        if (!matchingTeam) {
+          Alert.alert("No Such Team", `Please register you team first`);
+          return;
+        }
+        const teamOwnerEmail = String(
+          matchingTeam.ownerEmail || matchingTeam.email || "",
+        )
+          .trim()
+          .toLowerCase();
+        if (teamOwnerEmail !== normalizedLoginEmail) {
+          Alert.alert("Team Ownership Required", "You can only register a team owned by your account.");
+          return;
+        }
+        if (
+          String(matchingTeam.email || "").trim().toLowerCase() !==
+          normalizedEmail
+        ) {
+          Alert.alert("Invalid Email", "The email address does not match this team.");
+          return;
+        }
+
+        const tournamentRef = ref(database, `tournaments/${tournamentId}`);
+        const tournamentSnapshot = await get(tournamentRef);
+        if (!tournamentSnapshot.exists()) {
+          Alert.alert("Error", "Tournament not found.");
+          return;
+        }
+        const tournament = tournamentSnapshot.val();
+        const registeredTeams = Array.isArray(tournament.teams)
+          ? tournament.teams
+          : Object.values(tournament.teams || {});
+        if (
+          registeredTeams.some(
+            (team) =>
+              String(team).toLowerCase() === normalizedTeamName.toLowerCase(),
+          )
+        ) {
+          Alert.alert(
+            "Already Registered",
+            "This team is already registered for the tournament.",
+          );
+          return;
+        }
+        if (!Number.isFinite(Number(tournament.slots)) || Number(tournament.slots) <= 0) {
+          Alert.alert("No Slots", "No tournament slots are available.");
+          return;
+        }
+        const entryFee = Number(tournament.entryFee);
+        const appUrl =
+          "upi://pay?pa=yashkarnik25-1@okicici&pn=CricWun&am=" +
+          entryFee +
+          "&tn=Payment%20for%20Tournament%20Registration&cu=INR";
+        const canOpen = await Linking.canOpenURL(appUrl);
+        if (!canOpen) {
+          Alert.alert(
+            "Payment Unavailable",
+            "Google Pay is not installed or UPI is not supported.",
+          );
+          return;
+        }
+        await Linking.openURL(appUrl);
+
+        let registrationError = "";
+        const transaction = await runTransaction(
+          tournamentRef,
+          (currentTournament) => {
+            if (!currentTournament) {
+              registrationError = "Tournament not found.";
+              return;
+            }
+            const existingTeams = Array.isArray(currentTournament.teams)
+              ? currentTournament.teams
+              : Object.values(currentTournament.teams || {});
+            const slots = Number(currentTournament.slots);
+            if (existingTeams.some((team) => String(team).toLowerCase() === normalizedTeamName.toLowerCase())) {
+              registrationError = "This team is already registered for the tournament.";
+              return;
+            }
+            if (!Number.isFinite(slots) || slots <= 0) {
+              registrationError = "No tournament slots are available.";
+              return;
+            }
+            return {
+              ...currentTournament,
+              teams: [...existingTeams, normalizedTeamName],
+              slots: slots - 1,
+            };
+          },
+          { applyLocally: false },
+        );
+        if (!transaction.committed) {
+          Alert.alert("Registration Failed", registrationError || "Registration could not be completed.");
+          return;
+        }
+        Alert.alert("Success", "Team registered successfully.");
+        setCurrentState("home");
+      } catch (error) {
+        console.error("Error registering for tournament:", error);
+        Alert.alert("Error", "Tournament registration failed. Please try again.");
+      }
     };
 
     return (
@@ -428,7 +494,7 @@ const IndexScreen = ({ navigation }) => {
       setForm({ ...form, [field]: value });
     };
 
-    const handleSignup = () => {
+    const handleSignup = async () => {
       const {
         firstname,
         lastname,
@@ -438,11 +504,12 @@ const IndexScreen = ({ navigation }) => {
         password,
         confirmPassword,
       } = form;
+      const normalizedEmail = email.trim().toLowerCase();
 
       if (
         !firstname.trim() ||
         !lastname.trim() ||
-        !email.trim() ||
+        !normalizedEmail ||
         !contact.trim() ||
         !password.trim() ||
         !confirmPassword.trim()
@@ -450,56 +517,55 @@ const IndexScreen = ({ navigation }) => {
         Alert.alert("Error", "Please fill in all fields.");
         return;
       }
+      if (!["player", "owner"].includes(role)) {
+        Alert.alert("Invalid Role", "Choose Player or Manager to create an account.");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        Alert.alert("Invalid Email", "Please enter a valid email address.");
+        return;
+      }
 
       if (password !== confirmPassword) {
         Alert.alert("Error", "Passwords do not match.");
         return;
       }
-      const newUser = {
-        firstname,
-        lastname,
-        email,
-        contact,
-        role,
-        password,
-      };
       const userRef = ref(database, "user");
-      push(userRef, newUser)
-        .then(() => {
-          Alert.alert("Success", "User added successfully");
-          const addStatProfile = () => {
-            const statRef = ref(database, "playerStats");
-            const InitialStatObj = {
-              matches: 0,
-
-              batting: {
-                runs: 0,
-                balls: 0,
-                average: 1,
-                strikeRate: 1,
-              },
-              bowling: {
-                balls: 0,
-                runs: 0,
-                wickets: 0,
-              },
-            };
-
-            InitialStatObj.email = form.email;
-            const playerRef = ref(
-              database,
-              `playerStats/${form.firstname + " " + form.lastname}`,
-            );
-            set(playerRef, InitialStatObj);
-          };
-
-          addStatProfile();
-          setCurrentState("login");
-        })
-        .catch((error) => {
-          console.error("Error adding User: ", error);
-          Alert.alert("Error", "Failed to add User");
+      try {
+        const duplicate = await get(
+          query(userRef, orderByChild("email"), equalTo(normalizedEmail)),
+        );
+        if (duplicate.exists()) {
+          Alert.alert("Duplicate Email", "An account already exists for this email.");
+          return;
+        }
+        await push(userRef, {
+          firstname: firstname.trim(),
+          lastname: lastname.trim(),
+          email: normalizedEmail,
+          contact: contact.trim(),
+          role,
+          password,
         });
+        const initialStats = {
+          matches: 0,
+          batting: { runs: 0, balls: 0, average: 0, strikeRate: 0 },
+          bowling: { balls: 0, runs: 0, wickets: 0 },
+          catches: 0,
+          email: normalizedEmail,
+          tournaments: {},
+          matchHistory: {},
+        };
+        await set(
+          ref(database, `playerStats/${firstname.trim()} ${lastname.trim()}`),
+          initialStats,
+        );
+        Alert.alert("Success", "User added successfully");
+        setCurrentState("login");
+      } catch (error) {
+        console.error("Error adding User:", error);
+        Alert.alert("Error", "Failed to create account.");
+      }
     };
 
     return (
@@ -669,7 +735,8 @@ const IndexScreen = ({ navigation }) => {
   const LoginPage = () => {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
-    const { emailGlobal, setEmailGlobal } = useContext(UserContext);
+    const { emailGlobal, setEmailGlobal, setRoleGlobal } =
+      useContext(UserContext);
 
     const handleLogin = async () => {
       if (!email.trim() || !password.trim()) {
@@ -685,14 +752,15 @@ const IndexScreen = ({ navigation }) => {
         const fetchUserQuery = query(
           userRef,
           orderByChild("email"),
-          equalTo(email),
+          equalTo(email.trim().toLowerCase()),
         );
         const snapshot = await get(fetchUserQuery);
 
         if (snapshot.exists()) {
           const userData = Object.values(snapshot.val())[0];
           if (userData.password === password) {
-            setEmailGlobal(email);
+            setEmailGlobal(email.trim().toLowerCase());
+            setRoleGlobal(userData.role || "");
             setIsLogin(true);
             setCurrentState("home");
           } else {

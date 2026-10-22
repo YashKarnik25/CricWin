@@ -19,7 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
 import { Ionicons } from "@expo/vector-icons";
 import { ref, onValue } from "firebase/database";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { useNavigation } from "expo-router/react-navigation";
 import { UserContext } from "./_layout";
 

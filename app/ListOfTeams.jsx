@@ -21,8 +21,9 @@ import {
   equalTo,
   get,
   remove,
+  update,
 } from "firebase/database";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import { LinearGradient } from "expo-linear-gradient";
 import Scorecard from "./ScoreCard";
 import ScoreScreen from "./ScoreNew";
@@ -36,6 +37,7 @@ const AdminHome = () => {
   const [data, setData] = useState({});
   const [isMatchesGenerated, setIsMatchesGenerated] = useState(false);
   const [match, setMatch] = useState({});
+  const [selectedTeam, setSelectedTeam] = useState(null);
   const [battingTeam, setBattingTeam] = useState("");
   const [bowlingTeam, setBowlingTeam] = useState("");
   const [tournaments, setTournaments] = useState([]);
@@ -64,6 +66,7 @@ const AdminHome = () => {
   const MatchCard = ({ data }) => {
     const handlePress = () => {
       setMatch(data);
+      setSelectedTeam(null);
       setCurrentState("chooseTeams");
     };
     return (
@@ -385,7 +388,7 @@ const AdminHome = () => {
     },
   });
 
-  const TournamentDetails = ({
+  const renderTournamentDetails = ({
     data,
     setCurrentState,
     setIsMatchesGenerated,
@@ -593,13 +596,26 @@ const AdminHome = () => {
     });
     const matchesRef = ref(database, "matches");
 
-    const handlePress = async () => {
-      if (!data.teams || data.teams.length === 0) {
+    const handleGenerateFixtures = async () => {
+      const teams = Array.isArray(data.teams) ? data.teams : [];
+      if (teams.length < 2 || teams.length % 2 !== 0) {
         Alert.alert(
-          "No Teams Registered",
-          "Please register teams before generating fixtures.",
+          "Insufficient Teams",
+          "At least two teams, in an even number, are required to generate fixtures.",
           [{ text: "OK" }]
         );
+        return;
+      }
+      const startDate = data.date ? new Date(data.date) : null;
+      if (!startDate || Number.isNaN(startDate.getTime())) {
+        Alert.alert("Invalid Start Date", "Set a valid tournament start date before generating fixtures.");
+        return;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      startDate.setHours(0, 0, 0, 0);
+      if (startDate > today) {
+        Alert.alert("Tournament Not Started", "Fixtures can be generated on or after the tournament start date.");
         return;
       }
 
@@ -616,19 +632,25 @@ const AdminHome = () => {
           isMatch = true;
         }
         if (!isMatch) {
-          for (let i = 0; i < data.teams.length; i += 2) {
+          for (let i = 0; i < teams.length; i += 2) {
             const newMatch = {
-              team1: data.teams[i],
-              team2: data.teams[i + 1],
+              team1: teams[i],
+              team2: teams[i + 1],
               tournamentId: data.id,
               status: "pending",
             };
             await push(matchesRef, newMatch);
           }
-          Alert.alert("Success", "Fixtures generated successfully!");
-          setIsMatchesGenerated(true);
-          setCurrentState("matches");
         }
+        await update(ref(database, `tournaments/${data.id}`), {
+          status: "ongoing",
+        });
+        Alert.alert(
+          "Success",
+          isMatch ? "Tournament is now ongoing." : "Fixtures generated successfully!",
+        );
+        setIsMatchesGenerated(true);
+        setCurrentState("matches");
       } catch (error) {
         Alert.alert("Error", "Error occurred: " + error.message);
       }
@@ -739,7 +761,7 @@ const AdminHome = () => {
           {data.teams && data.teams.length > 0 && (
             <TouchableOpacity
               style={detailsStyles.fullWidthGenerateButton}
-              onPress={handlePress}
+              onPress={handleGenerateFixtures}
             >
               <Ionicons name="calendar" size={20} color="#fff" />
               <Text style={detailsStyles.generateButtonText}>Fixtures</Text>
@@ -970,6 +992,7 @@ const AdminHome = () => {
               activeOpacity={0.8}
               onPress={() => {
                 setMatch(data);
+                setSelectedTeam(null);
                 setCurrentState("chooseTeams");
               }}
             >
@@ -1012,6 +1035,7 @@ const AdminHome = () => {
                     style={matchesStyles.actionButton}
                     onPress={() => {
                       setMatch(data);
+                      setSelectedTeam(null);
                       setCurrentState("chooseTeams");
                     }}
                   >
@@ -1037,7 +1061,7 @@ const AdminHome = () => {
     );
   };
 
-  const ChooseTeams = ({ match }) => {
+  const renderChooseTeams = ({ match, selectedTeam, setSelectedTeam }) => {
     const chooseTeamStyle = StyleSheet.create({
       container: {
         flex: 1,
@@ -1185,8 +1209,6 @@ const AdminHome = () => {
       },
     });
 
-    const [selectedTeam, setSelectedTeam] = useState(null);
-
     const handleTeamSelect = (team) => {
       setSelectedTeam(team);
     };
@@ -1290,17 +1312,19 @@ const AdminHome = () => {
   if (currentState === "listOfTournaments") {
     return <ListOfTeams />;
   } else if (currentState === "tournamentDetails") {
-    return (
-      <TournamentDetails
-        data={data}
-        setCurrentState={setCurrentState}
-        setIsMatchesGenerated={setIsMatchesGenerated}
-      />
-    );
+    return renderTournamentDetails({
+      data,
+      setCurrentState,
+      setIsMatchesGenerated,
+    });
   } else if (currentState === "matches") {
     return <Matches tid={data.id} />;
   } else if (currentState === "chooseTeams") {
-    return <ChooseTeams match={match} />;
+    return renderChooseTeams({
+      match,
+      selectedTeam,
+      setSelectedTeam,
+    });
   } else if (currentState === "scoreCard") {
     return (
       <ScoreScreen

@@ -1,5 +1,6 @@
 import React, { createContext, useState, ReactNode } from "react";
 import { View, Text, StyleSheet, Image } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createBottomTabNavigator } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import { createNativeStackNavigator } from "expo-router/native-stack";
@@ -22,6 +23,8 @@ import ManageSponsors from "./admin/manageSponsors";
 interface UserContextType {
   emailGlobal: string;
   setEmailGlobal: (email: string) => void;
+  roleGlobal: string;
+  setRoleGlobal: (role: string) => void;
 }
 
 interface UserContext2Type {
@@ -32,6 +35,8 @@ interface UserContext2Type {
 export const UserContext = createContext<UserContextType>({
   emailGlobal: "",
   setEmailGlobal: () => {},
+  roleGlobal: "",
+  setRoleGlobal: () => {},
 });
 
 export const UserContext2 = createContext<UserContext2Type>({
@@ -41,8 +46,48 @@ export const UserContext2 = createContext<UserContext2Type>({
 
 const UserProvider = ({ children }: { children: ReactNode }) => {
   const [emailGlobal, setEmailGlobal] = useState("");
+  const [roleGlobal, setRoleGlobal] = useState("");
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    const restoreSession = async () => {
+      try {
+        const storedSession = await AsyncStorage.getItem("@cricwin/session");
+        if (isMounted && storedSession) {
+          const session = JSON.parse(storedSession);
+          setEmailGlobal(session.email || "");
+          setRoleGlobal(session.role || "");
+        }
+      } catch (error) {
+        console.error("Error restoring login session:", error);
+      } finally {
+        if (isMounted) setSessionLoaded(true);
+      }
+    };
+    restoreSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!sessionLoaded) return;
+    AsyncStorage.setItem(
+      "@cricwin/session",
+      JSON.stringify({ email: emailGlobal, role: roleGlobal }),
+    ).catch((error) => console.error("Error persisting login session:", error));
+  }, [emailGlobal, roleGlobal, sessionLoaded]);
+
   return (
-    <UserContext.Provider value={{ emailGlobal, setEmailGlobal }}>
+    <UserContext.Provider
+      value={{
+        emailGlobal,
+        setEmailGlobal,
+        roleGlobal,
+        setRoleGlobal,
+      }}
+    >
       {children}
     </UserContext.Provider>
   );

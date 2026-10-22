@@ -11,15 +11,13 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "expo-router/react-navigation";
-import { database } from "./firebase";
+import { database } from "../lib/firebase";
 import {
   ref,
   query,
   orderByChild,
   equalTo,
   get,
-  push,
-  set,
   update,
 } from "firebase/database";
 
@@ -63,17 +61,21 @@ const AnimatedButton = ({ children, onPress, style, disabled, ...props }) => {
 const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
   const navigation = useNavigation();
   const [showMatches, setShowMatches] = useState(false);
+  const [currentBattingTeam, setCurrentBattingTeam] = useState(battingTeam1);
+  const [currentBowlingTeam, setCurrentBowlingTeam] = useState(bowlingTeam1);
+  const [tournamentOvers, setTournamentOvers] = useState(null);
+  const maxOvers = Number(match?.overs || tournamentOvers || 10);
 
   const [firstInning, setFirstInning] = useState(null);
   const [secondInning, setSecondInning] = useState(null);
 
   const [team1Players, setTeam1Players] = useState([]);
   const [team2Players, setTeam2Players] = useState([]);
+  const [teamPlayerEmails, setTeamPlayerEmails] = useState({});
 
   const [dismissedBatsmenFirst, setDismissedBatsmenFirst] = useState([]);
   const [dismissedBatsmenSecond, setDismissedBatsmenSecond] = useState([]);
 
-  const [isInningSwitched, setIsInningSwitched] = useState(false);
   const [totalRuns, setTotalRuns] = useState(0);
   const [wickets, setWickets] = useState(0);
   const [ballsInOver, setBallsInOver] = useState(0);
@@ -103,8 +105,41 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
   const [targetRuns, setTargetRuns] = useState(null);
   const [switchMessage, setSwitchMessage] = useState("");
   const [isAfterNoBall, setIsAfterNoBall] = useState(false);
+  const [extras, setExtras] = useState({ wides: 0, noBalls: 0, total: 0 });
+  const [fielderCatches, setFielderCatches] = useState({});
+  const [showDismissalModal, setShowDismissalModal] = useState(false);
+  const [showFielderModal, setShowFielderModal] = useState(false);
+  const [pendingDismissal, setPendingDismissal] = useState("");
+  const inningsSwitchingRef = useRef(false);
+  const matchFinalizedRef = useRef(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    setCurrentBattingTeam(battingTeam1);
+    setCurrentBowlingTeam(bowlingTeam1);
+  }, [battingTeam1, bowlingTeam1]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchTournamentOvers = async () => {
+      if (match?.overs || !match?.tournamentId) return;
+      try {
+        const snapshot = await get(
+          ref(database, `tournaments/${match.tournamentId}/overs`),
+        );
+        if (isMounted && snapshot.exists()) {
+          setTournamentOvers(Number(snapshot.val()));
+        }
+      } catch (error) {
+        console.error("Error fetching tournament overs:", error);
+      }
+    };
+    fetchTournamentOvers();
+    return () => {
+      isMounted = false;
+    };
+  }, [match?.overs, match?.tournamentId]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -137,6 +172,12 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
           const team2Names = t2.map((player) => player.name);
           setTeam1Players(team1Names);
           setTeam2Players(team2Names);
+          setTeamPlayerEmails(
+            [...t1, ...t2].reduce((emails, player) => {
+              if (player.name && player.email) emails[player.name] = player.email;
+              return emails;
+            }, {}),
+          );
         } else {
           console.log("No team data available");
         }
@@ -164,111 +205,19 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     }
   }, [team1Players, team2Players]);
 
-  useEffect(() => {
-    if (innings === 1 && team1Players.length > 0) {
-      const maxWickets = team1Players.length - 1;
-      if (completedOvers >= 3 || wickets >= maxWickets) {
-        handleSwitchInnings();
-      }
-    }
-  }, [completedOvers, wickets, innings, team1Players]);
-
-  useEffect(() => {
-    if (innings === 2 && targetRuns !== null) {
-      const maxWicketsTeam2 =
-        team2Players.length > 0 ? team2Players.length - 1 : 10;
-      if (totalRuns >= targetRuns) {
-        const secondInningData = {
-          history,
-          batsmen: {
-            striker: currentBatsmen.striker,
-            nonStriker: currentBatsmen.nonStriker,
-            bench: battingTeamBench,
-            dismissed: dismissedBatsmenSecond,
-          },
-          bowlers: { ...allBowlersStats, current: currentBowler },
-          extras: 0,
-          team2TotalRuns: totalRuns,
-          team2Wickets: wickets,
-        };
-        setSecondInning(secondInningData);
-        if (firstInning) {
-          storeMatchData(firstInning, secondInningData);
-          updateOverallPlayerStats(firstInning, secondInningData);
-          updateMatchStatus();
-        }
-        Alert.alert("Match Result", "Team batting second wins!", [
-          {
-            text: "OK",
-            onPress: () => {
-              navigation.navigate("Dashboard");
-              setShowMatches(true);
-            },
-          },
-        ]);
-      } else if (
-        (completedOvers >= 3 || wickets >= maxWicketsTeam2) &&
-        totalRuns < targetRuns
-      ) {
-        const secondInningData = {
-          history,
-          batsmen: {
-            striker: currentBatsmen.striker,
-            nonStriker: currentBatsmen.nonStriker,
-            bench: battingTeamBench,
-            dismissed: dismissedBatsmenSecond,
-          },
-          bowlers: { ...allBowlersStats, current: currentBowler },
-          extras: 0,
-          team2TotalRuns: totalRuns,
-          team2Wickets: wickets,
-        };
-        setSecondInning(secondInningData);
-        if (firstInning) {
-          storeMatchData(firstInning, secondInningData);
-          updateOverallPlayerStats(firstInning, secondInningData);
-          updateMatchStatus();
-        }
-        Alert.alert("Match Result", "Team batting first wins!", [
-          {
-            text: "OK",
-            onPress: () => {
-              navigation.navigate("Dashboard");
-              setShowMatches(true);
-            },
-          },
-        ]);
-      }
-    }
-  }, [
-    totalRuns,
-    completedOvers,
-    wickets,
-    innings,
-    targetRuns,
-    team2Players,
-    dismissedBatsmenSecond,
-    currentBatsmen,
-    battingTeamBench,
-    allBowlersStats,
-    currentBowler,
-    history,
-    firstInning,
-  ]);
-
-  const storeMatchData = async (firstData, secondData) => {
+  const storeMatchData = async (firstData, secondData, winningTeamName) => {
     try {
-      const matchesRef = ref(database, `matches/${match.id}`);
-      const newMatchRef = push(matchesRef);
-      await set(newMatchRef, {
+      await update(ref(database, `matches/${match.id}`), {
         scoreCard: {
           firstInning: firstData,
           secondInning: secondData,
         },
+        winner: winningTeamName,
       });
       console.log("Match data stored successfully.");
     } catch (error) {
       console.error("Error storing match data:", error);
+      throw error;
     }
   };
 
@@ -279,129 +228,211 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
       console.log("Match status updated to completed.");
     } catch (error) {
       console.error("Error updating match status:", error);
+      throw error;
     }
   };
 
-  const updateOverallPlayerStats = async (firstData, secondData) => {
+  const updateOverallPlayerStats = async (firstData, secondData, winnerName) => {
     const matchStats = {};
     const initPlayer = (name) => {
+      if (!name) return;
       if (!matchStats[name]) {
         matchStats[name] = {
           batting: { runs: 0, balls: 0 },
           bowling: { runs: 0, balls: 0, wickets: 0 },
+          catches: 0,
         };
       }
     };
+    const addBattingStats = (inningsData) => {
+      const batsmen = inningsData?.batsmen;
+      if (!batsmen) return;
+      const countedBatsmen = new Set();
+      [batsmen.striker, batsmen.nonStriker, ...(batsmen.dismissed || [])]
+        .filter((player) => {
+          if (!player?.name || countedBatsmen.has(player.name)) return false;
+          countedBatsmen.add(player.name);
+          return true;
+        })
+        .forEach((player) => {
+          initPlayer(player.name);
+          matchStats[player.name].batting.runs += Number(player.runs) || 0;
+          matchStats[player.name].batting.balls += Number(player.balls) || 0;
+        });
+    };
+    const addBowlingStats = (inningsData) => {
+      Object.entries(inningsData?.bowlers || {}).forEach(([name, bowler]) => {
+        if (name === "current" || !bowler) return;
+        initPlayer(name);
+        matchStats[name].bowling.runs += Number(bowler.runsGiven) || 0;
+        matchStats[name].bowling.balls += Number(bowler.balls) || 0;
+        matchStats[name].bowling.wickets += Number(bowler.wickets) || 0;
+      });
+    };
+    addBattingStats(firstData);
+    addBattingStats(secondData);
+    addBowlingStats(firstData);
+    addBowlingStats(secondData);
+    Object.entries(fielderCatches).forEach(([name, catches]) => {
+      initPlayer(name);
+      matchStats[name].catches += catches;
+    });
 
-    if (firstData && firstData.batsmen) {
-      const bat1 = firstData.batsmen;
-      if (bat1.striker?.name) {
-        initPlayer(bat1.striker.name);
-        matchStats[bat1.striker.name].batting.runs += bat1.striker.runs || 0;
-        matchStats[bat1.striker.name].batting.balls += bat1.striker.balls || 0;
-      }
-      if (bat1.nonStriker?.name) {
-        initPlayer(bat1.nonStriker.name);
-        matchStats[bat1.nonStriker.name].batting.runs +=
-          bat1.nonStriker.runs || 0;
-        matchStats[bat1.nonStriker.name].batting.balls +=
-          bat1.nonStriker.balls || 0;
-      }
-    }
-    if (firstData && firstData.bowlers) {
-      const bowl1 = firstData.bowlers;
-      Object.keys(bowl1).forEach((name) => {
-        initPlayer(name);
-        matchStats[name].bowling.runs += bowl1[name].runsGiven || 0;
-        matchStats[name].bowling.balls += bowl1[name].balls || 0;
-        matchStats[name].bowling.wickets += bowl1[name].wickets || 0;
-      });
-    }
-    if (secondData && secondData.batsmen) {
-      const bat2 = secondData.batsmen;
-      if (bat2.striker?.name) {
-        initPlayer(bat2.striker.name);
-        matchStats[bat2.striker.name].batting.runs += bat2.striker.runs || 0;
-        matchStats[bat2.striker.name].batting.balls += bat2.striker.balls || 0;
-      }
-      if (bat2.nonStriker?.name) {
-        initPlayer(bat2.nonStriker.name);
-        matchStats[bat2.nonStriker.name].batting.runs +=
-          bat2.nonStriker.runs || 0;
-        matchStats[bat2.nonStriker.name].batting.balls +=
-          bat2.nonStriker.balls || 0;
-      }
-    }
-    if (secondData && secondData.bowlers) {
-      const bowl2 = secondData.bowlers;
-      Object.keys(bowl2).forEach((name) => {
-        initPlayer(name);
-        matchStats[name].bowling.runs += bowl2[name].runsGiven || 0;
-        matchStats[name].bowling.balls += bowl2[name].balls || 0;
-        matchStats[name].bowling.wickets += bowl2[name].wickets || 0;
-      });
+    const allPlayers = Array.from(
+      new Set([...team1Players, ...team2Players, ...Object.keys(matchStats)]),
+    ).filter(Boolean);
+    const tournamentId = match?.tournamentId;
+    const matchId = match?.id;
+    let tournamentName = "";
+    if (tournamentId) {
+      const tournamentSnapshot = await get(
+        ref(database, `tournaments/${tournamentId}/name`),
+      );
+      if (tournamentSnapshot.exists()) tournamentName = tournamentSnapshot.val();
     }
 
-    const allPlayers = Array.from(new Set([...team1Players, ...team2Players]));
-    const promises = [];
-    for (const playerName of allPlayers) {
-      const playerRef = ref(database, "playerStats/" + playerName);
-      const p = get(playerRef).then((snapshot) => {
-        if (snapshot.exists()) {
-          let currentData = snapshot.val();
-          const newMatches = (currentData.matches || 0) + 1;
-          const battingContribution = matchStats[playerName]?.batting || {
-            runs: 0,
-            balls: 0,
+    await Promise.all(
+      allPlayers.map(async (playerName) => {
+        const playerRef = ref(database, `playerStats/${playerName}`);
+        const snapshot = await get(playerRef);
+        const currentData = snapshot.exists() ? snapshot.val() : {};
+        if (matchId && currentData.matchHistory?.[matchId]) return;
+        const contribution = matchStats[playerName] || {
+          batting: { runs: 0, balls: 0 },
+          bowling: { runs: 0, balls: 0, wickets: 0 },
+          catches: 0,
+        };
+        const nextMatches = (Number(currentData.matches) || 0) + 1;
+        const mergeStats = (existing = {}, addition, matchesPlayed) => {
+          const runs = (Number(existing.runs) || 0) + addition.runs;
+          const balls = (Number(existing.balls) || 0) + addition.balls;
+          const stats = { ...existing, runs, balls };
+          if ("wickets" in addition) {
+            stats.wickets = (Number(existing.wickets) || 0) + addition.wickets;
+          }
+          if ("strikeRate" in existing || addition.balls > 0) {
+            stats.strikeRate = balls > 0 ? (runs / balls) * 100 : 0;
+          }
+          if ("average" in existing || addition.runs > 0) {
+            stats.average = matchesPlayed > 0 ? runs / matchesPlayed : runs;
+          }
+          return stats;
+        };
+        const matchContribution = {
+          batting: {
+            ...contribution.batting,
+            strikeRate:
+              contribution.batting.balls > 0
+                ? (contribution.batting.runs / contribution.batting.balls) *
+                  100
+                : 0,
+            average: contribution.batting.runs,
+          },
+          bowling: contribution.bowling,
+          catches: contribution.catches,
+          matches: 1,
+        };
+        const updates = {
+          matches: nextMatches,
+          batting: mergeStats(
+            currentData.batting,
+            contribution.batting,
+            nextMatches,
+          ),
+          bowling: mergeStats(
+            currentData.bowling,
+            contribution.bowling,
+            nextMatches,
+          ),
+          catches: (Number(currentData.catches) || 0) + contribution.catches,
+        };
+        const playerEmail =
+          currentData.email || teamPlayerEmails[playerName] || "";
+        if (playerEmail) updates.email = playerEmail;
+
+        if (tournamentId) {
+          const tournamentStats = currentData.tournaments?.[tournamentId] || {};
+          const tournamentMatches = (Number(tournamentStats.matches) || 0) + 1;
+          updates[`tournaments/${tournamentId}`] = {
+            ...tournamentStats,
+            name: tournamentName || tournamentStats.name || tournamentId,
+            matches: tournamentMatches,
+            batting: mergeStats(
+              tournamentStats.batting,
+              contribution.batting,
+              tournamentMatches,
+            ),
+            bowling: mergeStats(
+              tournamentStats.bowling,
+              contribution.bowling,
+              tournamentMatches,
+            ),
+            catches:
+              (Number(tournamentStats.catches) || 0) + contribution.catches,
           };
-          const bowlingContribution = matchStats[playerName]?.bowling || {
-            runs: 0,
-            balls: 0,
-            wickets: 0,
-          };
-          const newBattingRuns =
-            (currentData.batting.runs || 0) + battingContribution.runs;
-          const newBattingBalls =
-            (currentData.batting.balls || 0) + battingContribution.balls;
-          const newStrikeRate =
-            newBattingBalls > 0
-              ? (newBattingRuns / newBattingBalls) * 100
-              : currentData.batting.strikeRate;
-          const newAverage =
-            newMatches > 0
-              ? newBattingRuns / newMatches
-              : currentData.batting.average;
-          const newBowlingRuns =
-            (currentData.bowling.runs || 0) + bowlingContribution.runs;
-          const newBowlingBalls =
-            (currentData.bowling.balls || 0) + bowlingContribution.balls;
-          const newWickets =
-            (currentData.bowling.wickets || 0) + bowlingContribution.wickets;
-          const updatedRecord = {
-            matches: newMatches,
-            batting: {
-              runs: newBattingRuns,
-              balls: newBattingBalls,
-              strikeRate: newStrikeRate,
-              average: newAverage,
-            },
-            bowling: {
-              runs: newBowlingRuns,
-              balls: newBowlingBalls,
-              wickets: newWickets,
-            },
-            email: currentData.email,
-          };
-          return set(playerRef, updatedRecord);
         }
-      });
-      promises.push(p);
-    }
-    await Promise.all(promises);
-    console.log("Overall player stats updated.");
+        if (matchId) {
+          updates[`matchHistory/${matchId}`] = {
+            ...matchContribution,
+            matchId,
+            tournamentId: tournamentId || null,
+            winner: winnerName,
+          };
+        }
+        await update(playerRef, updates);
+      }),
+    );
   };
 
-  const resetScore = () => {
+  const getInningsData = (teamRunsKey, teamWicketsKey, dismissedBatsmen) => ({
+    history,
+    batsmen: {
+      striker: currentBatsmen.striker,
+      nonStriker: currentBatsmen.nonStriker,
+      bench: battingTeamBench,
+      dismissed: dismissedBatsmen,
+    },
+    bowlers: {
+      ...allBowlersStats,
+      ...(currentBowler.name ? { [currentBowler.name]: currentBowler } : {}),
+    },
+    extras,
+    [teamRunsKey]: totalRuns,
+    [teamWicketsKey]: wickets,
+  });
+
+  async function finalizeMatch(winnerName, resultMessage) {
+    if (matchFinalizedRef.current || !firstInning) return;
+    matchFinalizedRef.current = true;
+    const secondInningData = getInningsData(
+      "team2TotalRuns",
+      "team2Wickets",
+      dismissedBatsmenSecond,
+    );
+    setSecondInning(secondInningData);
+    try {
+      await Promise.all([
+        storeMatchData(firstInning, secondInningData, winnerName),
+        updateOverallPlayerStats(firstInning, secondInningData, winnerName),
+        updateMatchStatus(),
+      ]);
+      Alert.alert("Match Result", resultMessage, [
+        {
+          text: "OK",
+          onPress: () => {
+            navigation.navigate("Dashboard");
+            setShowMatches(true);
+          },
+        },
+      ]);
+    } catch (error) {
+      console.error("Error finalizing match:", error);
+      Alert.alert("Error", "The match result could not be saved.");
+      matchFinalizedRef.current = false;
+    }
+  }
+
+  const resetScore = (preserveCatches = false) => {
     setTotalRuns(0);
     setWickets(0);
     setBallsInOver(0);
@@ -409,8 +440,12 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setHistory([]);
     setRedoHistory([]);
     setAllBowlersStats({});
+    setExtras({ wides: 0, noBalls: 0, total: 0 });
+    if (!preserveCatches) setFielderCatches({});
     setShowBatsmanModal(false);
     setShowBowlerModal(false);
+    setShowDismissalModal(false);
+    setShowFielderModal(false);
     setIsAfterNoBall(false);
   };
 
@@ -443,6 +478,8 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
       currentBatsmen: JSON.parse(JSON.stringify(currentBatsmen)),
       currentBowler: JSON.parse(JSON.stringify(currentBowler)),
       allBowlersStats: JSON.parse(JSON.stringify(allBowlersStats)),
+      extras: { ...extras },
+      fielderCatches: { ...fielderCatches },
       isAfterNoBall,
       battingTeamBench: [...battingTeamBench],
       dismissedBatsmenFirst: [...dismissedBatsmenFirst],
@@ -467,6 +504,8 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setCurrentBatsmen(s.currentBatsmen);
     setCurrentBowler(s.currentBowler);
     setAllBowlersStats(s.allBowlersStats);
+    setExtras(s.extras);
+    setFielderCatches(s.fielderCatches);
     setIsAfterNoBall(s.isAfterNoBall);
     setBattingTeamBench(s.battingTeamBench);
     setDismissedBatsmenFirst(s.dismissedBatsmenFirst);
@@ -480,7 +519,8 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
 
     // Re-execute Action
     if (redoEvent.type === "run") handleLegalBall(redoEvent.value, true);
-    else if (redoEvent.type === "wicket") handleWicket(true);
+    else if (redoEvent.type === "wicket")
+      handleWicket(true, redoEvent.dismissalType, redoEvent.fielder);
     else if (redoEvent.type === "wide") handleWide(true);
     else if (redoEvent.type === "noBall") handleNoBall(true);
   };
@@ -518,15 +558,25 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     }
   };
 
-  const handleWicket = (isRedo = false) => {
+  const handleWicket = (
+    isRedo = false,
+    dismissalType = "Bowled",
+    fielder = "",
+  ) => {
     if (!isRedo) setRedoHistory([]);
-    saveStateToHistory({ type: "wicket" });
+    saveStateToHistory({ type: "wicket", dismissalType, fielder });
 
     setWickets((prev) => prev + 1);
     if (innings === 1) {
-      setDismissedBatsmenFirst((prev) => [...prev, currentBatsmen.striker]);
+      setDismissedBatsmenFirst((prev) => [
+        ...prev,
+        { ...currentBatsmen.striker, dismissalType, fielder },
+      ]);
     } else if (innings === 2) {
-      setDismissedBatsmenSecond((prev) => [...prev, currentBatsmen.striker]);
+      setDismissedBatsmenSecond((prev) => [
+        ...prev,
+        { ...currentBatsmen.striker, dismissalType, fielder },
+      ]);
     }
     setCurrentBatsmen((prev) => ({
       ...prev,
@@ -534,9 +584,15 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     }));
     setCurrentBowler((prev) => ({
       ...prev,
-      wickets: prev.wickets + 1,
+      wickets: prev.wickets + (dismissalType === "Run Out" ? 0 : 1),
       balls: prev.balls + 1,
     }));
+    if (dismissalType === "Caught" && fielder) {
+      setFielderCatches((prev) => ({
+        ...prev,
+        [fielder]: (prev[fielder] || 0) + 1,
+      }));
+    }
 
     if (isAfterNoBall) {
       setIsAfterNoBall(false);
@@ -547,11 +603,33 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     setShowBatsmanModal(true);
   };
 
+  const startWicket = () => setShowDismissalModal(true);
+
+  const selectDismissalType = (dismissalType) => {
+    setPendingDismissal(dismissalType);
+    setShowDismissalModal(false);
+    if (dismissalType === "Caught" || dismissalType === "Run Out") {
+      setShowFielderModal(true);
+    } else {
+      handleWicket(false, dismissalType);
+    }
+  };
+
+  const selectWicketFielder = (fielder) => {
+    setShowFielderModal(false);
+    handleWicket(false, pendingDismissal, fielder);
+  };
+
   const handleWide = (isRedo = false) => {
     if (!isRedo) setRedoHistory([]);
     saveStateToHistory({ type: "wide" });
 
     setTotalRuns((prev) => prev + 1);
+    setExtras((prev) => ({
+      ...prev,
+      wides: prev.wides + 1,
+      total: prev.total + 1,
+    }));
     setCurrentBowler((prev) => ({
       ...prev,
       runsGiven: prev.runsGiven + 1,
@@ -563,6 +641,11 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
     saveStateToHistory({ type: "noBall" });
 
     setTotalRuns((prev) => prev + 1);
+    setExtras((prev) => ({
+      ...prev,
+      noBalls: prev.noBalls + 1,
+      total: prev.total + 1,
+    }));
     setCurrentBowler((prev) => ({
       ...prev,
       runsGiven: prev.runsGiven + 1,
@@ -580,44 +663,36 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
   };
 
   const handleSelectBowler = (player) => {
-    const existingStats = allBowlersStats[player] || {
+    if (!player || player === currentBowler.name) return;
+    const outgoingStats = currentBowler.name
+      ? { [currentBowler.name]: { ...currentBowler } }
+      : {};
+    const updatedStats = { ...allBowlersStats, ...outgoingStats };
+    const existingStats = updatedStats[player] || {
       runsGiven: 0,
       wickets: 0,
       balls: 0,
     };
+    setAllBowlersStats(updatedStats);
     setCurrentBowler({
       name: player,
       ...existingStats,
     });
-    setAllBowlersStats((prev) => ({
-      ...prev,
-      [player]: {
-        runsGiven: currentBowler.runsGiven,
-        wickets: currentBowler.wickets,
-        balls: currentBowler.balls,
-      },
-    }));
     setShowBowlerModal(false);
   };
 
-  const handleSwitchInnings = () => {
-    const firstInningData = {
-      history,
-      batsmen: {
-        striker: currentBatsmen.striker,
-        nonStriker: currentBatsmen.nonStriker,
-        bench: battingTeamBench,
-        dismissed: dismissedBatsmenFirst,
-      },
-      bowlers: { ...allBowlersStats, current: currentBowler },
-      extras: 0,
-      team1TotalRuns: totalRuns,
-      team1Wickets: wickets,
-    };
+  function handleSwitchInnings() {
+    if (inningsSwitchingRef.current) return;
+    inningsSwitchingRef.current = true;
+    const firstInningData = getInningsData(
+      "team1TotalRuns",
+      "team1Wickets",
+      dismissedBatsmenFirst,
+    );
     setFirstInning(firstInningData);
     setTargetRuns(totalRuns + 1);
     setInnings(2);
-    resetScore();
+    resetScore(true);
     setDismissedBatsmenSecond([]);
     if (team2Players.length > 1 && team1Players.length > 0) {
       setCurrentBatsmen({
@@ -633,16 +708,62 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
         balls: 0,
       });
     }
-    const temp = battingTeam1;
-    battingTeam1 = bowlingTeam1;
-    bowlingTeam1 = temp;
+    setCurrentBattingTeam(currentBowlingTeam);
+    setCurrentBowlingTeam(currentBattingTeam);
     setSwitchMessage(
-      `${isInningSwitched ? bowlingTeam1 : battingTeam1} need ${
-        totalRuns + 1
-      } runs to win.`,
+      `${currentBowlingTeam} need ${totalRuns + 1} runs to win.`,
     );
-    setIsInningSwitched(true);
-  };
+  }
+
+  useEffect(() => {
+    if (innings === 1 && !inningsSwitchingRef.current && team1Players.length > 0) {
+      const maxWickets = team1Players.length - 1;
+      if (completedOvers >= maxOvers || wickets >= maxWickets) {
+        handleSwitchInnings();
+      }
+    }
+  }, [
+    completedOvers,
+    wickets,
+    innings,
+    team1Players,
+    maxOvers,
+    handleSwitchInnings,
+  ]);
+
+  useEffect(() => {
+    if (innings === 2 && targetRuns !== null && !matchFinalizedRef.current) {
+      const maxWicketsTeam2 =
+        team2Players.length > 0 ? team2Players.length - 1 : 10;
+      const inningsComplete =
+        completedOvers >= maxOvers || wickets >= maxWicketsTeam2;
+      if (totalRuns >= targetRuns) {
+        finalizeMatch(currentBattingTeam, "wins!");
+      } else if (inningsComplete && totalRuns === targetRuns - 1) {
+        finalizeMatch("Match Tied!", "Match Tied!");
+      } else if (inningsComplete && totalRuns < targetRuns - 1) {
+        finalizeMatch(currentBowlingTeam, "wins!");
+      }
+    }
+  }, [
+    totalRuns,
+    completedOvers,
+    wickets,
+    innings,
+    targetRuns,
+    team2Players,
+    dismissedBatsmenSecond,
+    currentBatsmen,
+    battingTeamBench,
+    allBowlersStats,
+    currentBowler,
+    history,
+    firstInning,
+    currentBattingTeam,
+    currentBowlingTeam,
+    maxOvers,
+    finalizeMatch,
+  ]);
 
   const displayOvers = `${completedOvers}.${ballsInOver}`;
   const bowlerOvers = `${Math.floor(currentBowler.balls / 6)}.${currentBowler.balls % 6}`;
@@ -660,21 +781,32 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
           <Text style={styles.headerTitle}>Live Score</Text>
         </View>
 
+        {switchMessage !== "" && (
+          <Text style={styles.switchMessage}>{switchMessage}</Text>
+        )}
+
         <Animated.View style={[styles.scoreCard, { opacity: fadeAnim }]}>
           <View style={styles.scoreRow}>
             <View style={styles.scoreColumn}>
-              <Text style={styles.teamName}>{battingTeam1}</Text>
+              <Text style={styles.teamName}>{currentBattingTeam}</Text>
               <Text style={styles.scoreDetails}>
                 CRR:{" "}
-                {(totalRuns / (completedOvers + ballsInOver / 6) || 0).toFixed(
-                  2,
-                )}
+                {(totalRuns /
+                  Math.max(completedOvers + ballsInOver / 6, 0.1)).toFixed(2)}
               </Text>
               <Text style={styles.scoreDetails}>
                 RRR:{" "}
-                {(totalRuns / (completedOvers + ballsInOver / 6) || 0).toFixed(
-                  2,
-                )}
+                {innings === 1 || targetRuns === null
+                  ? "--"
+                  : (
+                      (targetRuns - totalRuns) /
+                      Math.max(
+                        (maxOvers * 6 -
+                          (completedOvers * 6 + ballsInOver)) /
+                          6,
+                        0.1,
+                      )
+                    ).toFixed(2)}
               </Text>
             </View>
             <View style={styles.scoreColumn}>
@@ -685,7 +817,8 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
             </View>
           </View>
           <Text style={styles.extras}>
-            Extras: 0 (B:0, LB:0, WD:0, NB:0, P:0)
+            Extras: {extras.total} (B:0, LB:0, WD:{extras.wides}, NB:
+            {extras.noBalls}, P:0)
           </Text>
         </Animated.View>
 
@@ -721,7 +854,7 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
         <View style={styles.actionButtonsContainer}>
           <AnimatedButton
             style={styles.actionButton}
-            onPress={() => handleWicket(false)}
+            onPress={startWicket}
           >
             <Text style={styles.actionButtonText}>WICKET</Text>
           </AnimatedButton>
@@ -778,12 +911,6 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
                   <Text style={styles.modalItemText}>{player}</Text>
                 </AnimatedButton>
               ))}
-              <AnimatedButton
-                onPress={() => setShowBatsmanModal(false)}
-                style={styles.modalCloseButton}
-              >
-                <Text style={styles.modalCloseButtonText}>Cancel</Text>
-              </AnimatedButton>
             </View>
           </View>
         </Modal>
@@ -792,7 +919,9 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>Select Bowler</Text>
-              {bowlingTeam.map((player, index) => (
+              {bowlingTeam
+                .filter((player) => player !== currentBowler.name)
+                .map((player, index) => (
                 <AnimatedButton
                   key={index}
                   style={styles.modalItem}
@@ -801,19 +930,53 @@ const ScoreScreen = ({ match, battingTeam1, bowlingTeam1 }) => {
                   <Text style={styles.modalItemText}>{player}</Text>
                 </AnimatedButton>
               ))}
-              <AnimatedButton
-                onPress={() => setShowBowlerModal(false)}
-                style={styles.modalCloseButton}
-              >
-                <Text style={styles.modalCloseButtonText}>Cancel</Text>
-              </AnimatedButton>
             </View>
           </View>
         </Modal>
 
-        {switchMessage !== "" && (
-          <Text style={styles.switchMessage}>{switchMessage}</Text>
-        )}
+        <Modal
+          visible={showDismissalModal}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowDismissalModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select Dismissal</Text>
+              {["Bowled", "Caught", "Run Out", "LBW"].map((dismissal) => (
+                <AnimatedButton
+                  key={dismissal}
+                  style={styles.modalItem}
+                  onPress={() => selectDismissalType(dismissal)}
+                >
+                  <Text style={styles.modalItemText}>{dismissal}</Text>
+                </AnimatedButton>
+              ))}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={showFielderModal}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowFielderModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select Fielder</Text>
+              {bowlingTeam.map((player) => (
+                <AnimatedButton
+                  key={player}
+                  style={styles.modalItem}
+                  onPress={() => selectWicketFielder(player)}
+                >
+                  <Text style={styles.modalItemText}>{player}</Text>
+                </AnimatedButton>
+              ))}
+            </View>
+          </View>
+        </Modal>
 
         <Modal visible={showMatches} animationType="slide"></Modal>
       </View>
@@ -1043,14 +1206,14 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
   switchMessage: {
-    position: "absolute",
-    bottom: 650,
-    alignSelf: "center",
+    alignSelf: "stretch",
     fontSize: 16,
     color: "#2c3e50",
     backgroundColor: "#ecf0f1",
     padding: 8,
     borderRadius: 8,
+    marginBottom: 12,
+    textAlign: "center",
   },
 });
 

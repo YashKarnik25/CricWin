@@ -18,3 +18,4 @@ const styles = StyleSheet.create({
 });
 
 export { Card };
+export default Card;
